@@ -96,6 +96,11 @@ export default function SavingsGoals() {
                                 100
                             );
 
+                            // Color-code progress bar
+                            let progressColor = 'bg-red-500';
+                            if (progress >= 75) progressColor = 'bg-green-500';
+                            else if (progress >= 25) progressColor = 'bg-yellow-400';
+
                             const manualAmount = goal.manualAllocatedAmount || 0;
                             const autoAmount = goal.allocatedAmount - manualAmount;
 
@@ -122,17 +127,19 @@ export default function SavingsGoals() {
 
                                     <div className="h-6 w-full bg-gray-200 rounded-full overflow-hidden relative">
                                         <div
-                                            className="h-full bg-blue-500 flex items-center justify-center text-white text-sm font-semibold transition-all duration-500"
+                                            className={`h-full ${progressColor} flex items-center justify-center text-white text-sm font-semibold transition-all duration-700`}
                                             style={{ width: `${progress}%` }}
                                         >
                                             {progress.toFixed(0)}%
                                         </div>
                                     </div>
+
                                     <p className="text-sm text-gray-500 mt-1">
-                                        ${goal.allocatedAmount.toFixed(2)} / ${goal.goalAmount}
+                                        ${goal.allocatedAmount.toFixed(2)} / ${goal.goalAmount} — ${(
+                                            goal.goalAmount - goal.allocatedAmount
+                                        ).toFixed(2)} remaining
                                     </p>
 
-                                    {/* Allocation breakdown */}
                                     <p className="text-xs text-gray-400 mt-1">
                                         Auto: ${autoAmount.toFixed(2)} | Manual: ${manualAmount.toFixed(2)}
                                     </p>
@@ -162,7 +169,6 @@ export default function SavingsGoals() {
                                                         return;
                                                     }
 
-                                                    // Track manual allocation separately
                                                     allocateToGoal(goal.id, amount);
                                                     setAllocate({ ...allocate, [goal.id]: '' });
                                                 }}
