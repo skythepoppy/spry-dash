@@ -1,28 +1,62 @@
-// src/pages/Entries.jsx
 import React, { useState } from 'react';
 import Navbar from '../components/Navbar';
+import { useEntries } from '../context/EntriesContext';
 
 export default function Entries() {
-    const [entries, setEntries] = useState([]);
+    const { entries, addEntry, deleteEntry } = useEntries();
     const [form, setForm] = useState({ category: '', amount: '', type: 'expense' });
 
     const handleSubmit = (e) => {
         e.preventDefault();
         if (!form.category || !form.amount) return;
 
-        setEntries([...entries, { ...form, id: Date.now() }]);
+        // Add timestamp and ensure amount is a number
+        addEntry({ 
+            ...form, 
+            amount: Number(form.amount), 
+            timestamp: new Date().toISOString() 
+        }); 
+
         setForm({ category: '', amount: '', type: 'expense' });
     };
 
+    const categorizeEntries = () => {
+        const now = new Date();
+        const currentWeekStart = new Date(now);
+        currentWeekStart.setDate(now.getDate() - now.getDay());
+        const lastWeekStart = new Date(currentWeekStart);
+        lastWeekStart.setDate(currentWeekStart.getDate() - 7);
+        const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+        const thisWeek = [];
+        const lastWeek = [];
+        const lastMonth = [];
+
+        entries.forEach((entry) => {
+            const entryDate = new Date(entry.timestamp || new Date()); // fallback to now
+            if (entryDate >= currentWeekStart) {
+                thisWeek.push({ ...entry, amount: Number(entry.amount) });
+            } else if (entryDate >= lastWeekStart && entryDate < currentWeekStart) {
+                lastWeek.push({ ...entry, amount: Number(entry.amount) });
+            } else if (entryDate >= lastMonthStart) {
+                lastMonth.push({ ...entry, amount: Number(entry.amount) });
+            }
+        });
+
+        return { thisWeek, lastWeek, lastMonth };
+    };
+
+    const { thisWeek, lastWeek, lastMonth } = categorizeEntries();
+
     const handleDelete = (id) => {
-        setEntries(entries.filter((entry) => entry.id !== id));
+        deleteEntry(id); 
     };
 
     return (
         <div className="min-h-screen bg-gray-50">
             <Navbar />
-            <div className="max-w-3xl mx-auto p-8">
-                <h1 className="text-3xl font-bold mb-8 text-gray-800 text-center sm:text-left">Entries</h1>
+            <div className="p-8">
+                <h1 className="text-3xl font-bold mb-8 text-gray-800">Entries</h1>
 
                 {/* Entry Form */}
                 <form
@@ -60,30 +94,47 @@ export default function Entries() {
                 </form>
 
                 {/* Entries List */}
-                <div className="space-y-3">
-                    {entries.length === 0 ? (
-                        <p className="text-gray-500 italic">No entries yet.</p>
-                    ) : (
-                        entries.map((entry) => (
-                            <div
-                                key={entry.id}
-                                className={`flex justify-between items-center p-4 rounded-xl border ${entry.type === 'expense'
-                                        ? 'bg-red-50 border-red-200'
-                                        : 'bg-green-50 border-green-200'
-                                    }`}
-                            >
-                                <span className="font-semibold capitalize">
-                                    {entry.category} — ${entry.amount}
-                                </span>
-                                <button
-                                    onClick={() => handleDelete(entry.id)}
-                                    className="text-sm text-gray-500 hover:text-red-600 transition"
-                                >
-                                    Delete
-                                </button>
-                            </div>
-                        ))
-                    )}
+                <div className="space-y-8">
+                    {[ 
+                        { title: 'This Week', data: thisWeek }, 
+                        { title: 'Last Week', data: lastWeek }, 
+                        { title: 'Last Month', data: lastMonth } 
+                    ].map(({ title, data }) => (
+                        <div key={title}>
+                            <h2 className="text-xl font-semibold text-gray-700 mb-3">{title}</h2>
+                            {data.length === 0 ? (
+                                <p className="text-gray-500 italic">No entries for this period.</p>
+                            ) : (
+                                <div className="space-y-3">
+                                    {data.map((entry) => (
+                                        <div
+                                            key={entry.id}
+                                            className={`flex justify-between items-center p-4 rounded-xl border ${
+                                                entry.type === 'expense'
+                                                    ? 'bg-red-50 border-red-200'
+                                                    : 'bg-green-50 border-green-200'
+                                            }`}
+                                        >
+                                            <div>
+                                                <span className="font-semibold capitalize block">
+                                                    {entry.category} — ${Number(entry.amount).toFixed(2)}
+                                                </span>
+                                                <span className="text-sm text-gray-500">
+                                                    {new Date(entry.timestamp).toLocaleString()}
+                                                </span>
+                                            </div>
+                                            <button
+                                                onClick={() => handleDelete(entry.id)}
+                                                className="text-sm text-gray-500 hover:text-red-600 transition"
+                                            >
+                                                Delete
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    ))}
                 </div>
             </div>
         </div>
