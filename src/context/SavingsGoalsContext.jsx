@@ -6,17 +6,19 @@ const SavingsGoalsContext = createContext();
 export function SavingsGoalsProvider({ children }) {
   const [goals, setGoals] = useState(() => {
     const stored = localStorage.getItem('goals');
-    return stored ? JSON.parse(stored) : [];
+    return stored
+      ? JSON.parse(stored).map(g => ({ ...g, allocatedAmount: Number(g.allocatedAmount) || 0 }))
+      : [];
   });
 
-  const { deductSavings } = useEntries();
+  const { entries, deductSavings } = useEntries();
 
   // Persist goals to localStorage
   useEffect(() => {
     localStorage.setItem('goals', JSON.stringify(goals));
   }, [goals]);
 
-  // Helper to check if a goal should auto-allocate
+  // Check if goal should auto-allocate
   const shouldAutoAllocate = (goal, now) => {
     if (!goal.lastAutoApplied) return true;
     const last = new Date(goal.lastAutoApplied);
@@ -29,9 +31,9 @@ export function SavingsGoalsProvider({ children }) {
     return false;
   };
 
-  // Add goal
+  // Add a new goal
   const addGoal = (goal) => {
-    setGoals((prev) => [
+    setGoals(prev => [
       ...prev,
       {
         ...goal,
@@ -47,85 +49,94 @@ export function SavingsGoalsProvider({ children }) {
 
   // Delete goal
   const deleteGoal = (id) => {
-    const goalToDelete = goals.find((g) => g.id === id);
+    const goalToDelete = goals.find(g => g.id === id);
     if (goalToDelete && goalToDelete.allocatedAmount > 0) {
       deductSavings(-goalToDelete.allocatedAmount); // return to savings
     }
-    setGoals((prev) => prev.filter((goal) => goal.id !== id));
+    setGoals(prev => prev.filter(g => g.id !== id));
   };
 
-  // Allocate money to goal
-  const allocateToGoal = (id, amount) => {
+  // Inside allocateToGoal
+  const allocateToGoal = (id, requestedAmount) => {
+    if (requestedAmount <= 0) return;
+
+    const totalSavings = entries
+      .filter(e => e.type === 'saving')
+      .reduce((sum, e) => sum + Number(e.amount), 0);
+
+    const amount = Math.min(requestedAmount, totalSavings);
     if (amount <= 0) return;
 
-    setGoals(prev => {
-      const updatedGoals = prev.map(goal => {
+    setGoals(prev =>
+      prev.map(goal => {
         if (goal.id === id) {
           const newAllocated = goal.allocatedAmount + amount;
+          const completed = newAllocated >= goal.goalAmount;
           return {
             ...goal,
             allocatedAmount: newAllocated,
-            completed: newAllocated >= goal.goalAmount,
+            completed,
+            completedAt: completed ? new Date().toISOString() : goal.completedAt,
           };
         }
         return goal;
-      });
+      })
+    );
 
-      // Deduct savings after updating goals
-      const allocatedGoal = updatedGoals.find(goal => goal.id === id);
-      if (allocatedGoal) {
-        // Use setTimeout 0 to schedule after render
-        setTimeout(() => deductSavings(amount), 0);
-      }
-
-      return updatedGoals;
-    });
+    deductSavings(amount);
   };
 
 
-  // Lock auto settings
+  // Lock auto allocation settings
   const lockInAutoSettings = (id, autoPercentage, autoType) => {
-    setGoals((prev) =>
-      prev.map((goal) =>
+    setGoals(prev =>
+      prev.map(goal =>
         goal.id === id ? { ...goal, autoPercentage, autoType } : goal
       )
     );
   };
 
-  // Safe auto allocation
-  const performAutoAllocation = (totalSavings) => {
+  // Auto allocate savings to goals
+  const performAutoAllocation = () => {
+    const totalSavings = entries
+      .filter(e => e.type === 'saving')
+      .reduce((sum, e) => sum + Number(e.amount), 0);
     if (totalSavings <= 0) return;
 
     const now = new Date();
 
-    // Collect allocations without immediately updating state to avoid re-render loops
     const allocations = goals
-      .filter((goal) => goal.autoPercentage > 0 && shouldAutoAllocate(goal, now))
-      .map((goal) => ({
+      .filter(goal => goal.autoPercentage > 0 && shouldAutoAllocate(goal, now))
+      .map(goal => ({
         id: goal.id,
         amount: (totalSavings * goal.autoPercentage) / 100,
       }));
 
-    // Update lastAutoApplied for the relevant goals
-    setGoals((prev) =>
-      prev.map((goal) => {
-        if (allocations.find((a) => a.id === goal.id)) {
+    // Update lastAutoApplied timestamp
+    setGoals(prev =>
+      prev.map(goal => {
+        if (allocations.find(a => a.id === goal.id)) {
           return { ...goal, lastAutoApplied: now.toISOString() };
         }
         return goal;
       })
     );
 
-    // Perform allocations after state update
+    // Allocate funds
     allocations.forEach(({ id, amount }) => {
-      if (amount > 0) allocateToGoal(id, amount, false);
+      if (amount > 0) allocateToGoal(id, amount);
     });
   };
+
+  const activeGoals = goals.filter(g => !g.completed);
+  const completedGoals = goals.filter(g => g.completed);
 
   return (
     <SavingsGoalsContext.Provider
       value={{
         goals,
+        activeGoals,
+        completedGoals,
         addGoal,
         deleteGoal,
         allocateToGoal,
@@ -136,6 +147,8 @@ export function SavingsGoalsProvider({ children }) {
       {children}
     </SavingsGoalsContext.Provider>
   );
+
+
 }
 
 export const useSavingsGoals = () => useContext(SavingsGoalsContext);

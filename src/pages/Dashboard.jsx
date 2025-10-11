@@ -11,19 +11,19 @@ export default function Dashboard() {
 
     // Total allocated to goals
     const totalAllocatedToGoals = goals.reduce(
-        (sum, g) => sum + g.allocatedAmount,
+        (sum, g) => sum + Number(g.allocatedAmount || 0),
         0
     );
 
     // Expenses
     const totalExpenses = entries
         .filter((e) => e.type === 'expense')
-        .reduce((sum, e) => sum + Number(e.amount), 0);
+        .reduce((sum, e) => sum + Number(e.amount || 0), 0);
 
     // Raw savings
     const totalSavingsRaw = entries
         .filter((e) => e.type === 'saving')
-        .reduce((sum, e) => sum + Number(e.amount), 0);
+        .reduce((sum, e) => sum + Number(e.amount || 0), 0);
 
     // Available savings after allocations
     const availableSavings = totalSavingsRaw;
@@ -42,45 +42,26 @@ export default function Dashboard() {
 
                 {/* Summary Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
-                    <Card title="Total Expenses" value={`$${totalExpenses.toFixed(2)}`} icon={DollarSign} color="bg-red-50" />
-                    <Card title="Total Savings" value={`$${availableSavings.toFixed(2)}`} icon={PiggyBank} color="bg-green-50" />
-                    <Card title="Wallet Balance" value={`$${walletBalance.toFixed(2)}`} icon={Wallet} color="bg-purple-50" />
+                    <Card
+                        title="Total Expenses"
+                        value={`$${totalExpenses.toFixed(2)}`}
+                        icon={DollarSign}
+                        color="bg-red-50"
+                    />
+                    <Card
+                        title="Total Savings"
+                        value={`$${availableSavings.toFixed(2)}`}
+                        icon={PiggyBank}
+                        color="bg-green-50"
+                    />
+                    <Card
+                        title="Wallet Balance"
+                        value={`$${walletBalance.toFixed(2)}`}
+                        icon={Wallet}
+                        color="bg-purple-50"
+                    />
 
-                    {/* Savings Goals Card */}
-                    <Card title="Savings Goals" color="bg-blue-50" value="" icon={TrendingUp}>
-                        <div className="space-y-3 mt-2">
-                            {goals.length === 0 ? (
-                                <p className="text-gray-500 italic text-sm">No goals set yet.</p>
-                            ) : (
-                                goals.map((goal) => (
-                                    <div key={goal.id}>
-                                        <div className="flex justify-between text-sm font-medium text-gray-700">
-                                            <span>{goal.title}</span>
-                                            <span>
-                                                ${goal.allocatedAmount.toFixed(2)} / ${goal.goalAmount}
-                                            </span>
-                                        </div>
-                                        <div className="w-full bg-gray-200 rounded-full h-2 mt-1 mb-1">
-                                            <div
-                                                className="bg-blue-500 h-2 rounded-full"
-                                                style={{
-                                                    width: `${Math.min(
-                                                        (goal.allocatedAmount / goal.goalAmount) * 100,
-                                                        100
-                                                    )}%`,
-                                                }}
-                                            />
-                                        </div>
-                                        {goal.autoPercentage > 0 && (
-                                            <p className="text-xs text-gray-500">
-                                                Auto-allocating {goal.autoPercentage}% of savings
-                                            </p>
-                                        )}
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </Card>
+                    
 
                     <Card title="Goals Achieved" value={achievedGoals} color="bg-green-50" />
                 </div>
