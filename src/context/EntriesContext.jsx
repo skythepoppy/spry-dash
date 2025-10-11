@@ -1,4 +1,3 @@
-// src/context/EntriesContext.js
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '../api/axios';
 
@@ -6,55 +5,61 @@ const EntriesContext = createContext();
 
 export function EntriesProvider({ children }) {
     const [entries, setEntries] = useState([]);
+    const token = localStorage.getItem('token'); // JWT stored after login
+
+    // Helper to set Authorization header
+    const authHeaders = () => ({
+        headers: { Authorization: `Bearer ${token}` },
+    });
 
     // Fetch entries for logged-in user
     const fetchEntries = async () => {
         try {
-            const res = await api.get('/entries');
-            setEntries(res.data);
+            const res = await api.get('/entries', authHeaders());
+            setEntries(res.data); // use the backend response directly
         } catch (err) {
-            console.error('Failed to fetch entries:', err);
+            console.error('Failed to fetch entries:', err.response?.data || err.message);
         }
     };
 
     useEffect(() => {
-        fetchEntries();
-    }, []);
+        if (token) fetchEntries();
+    }, [token]);
 
     // Add a new entry
     const addEntry = async (entry) => {
         try {
-            const res = await api.post('/entries', entry);
-            setEntries((prev) => [...prev, { ...entry, id: res.data.entryId }]);
+            const res = await api.post('/entries', entry, authHeaders());
+            setEntries((prev) => [...prev, res.data.entry]); // assumes backend returns full entry object
         } catch (err) {
-            console.error('Failed to add entry:', err);
+            console.error('Failed to add entry:', err.response?.data || err.message);
         }
     };
 
     // Update an entry
     const updateEntry = async (id, updates) => {
         try {
-            await api.put(`/entries/${id}`, updates);
+            const res = await api.put(`/entries/${id}`, updates, authHeaders());
             setEntries((prev) =>
                 prev.map((e) => (e.id === id ? { ...e, ...updates } : e))
             );
         } catch (err) {
-            console.error('Failed to update entry:', err);
+            console.error('Failed to update entry:', err.response?.data || err.message);
         }
     };
 
     // Delete an entry
     const deleteEntry = async (id) => {
         try {
-            await api.delete(`/entries/${id}`);
+            await api.delete(`/entries/${id}`, authHeaders());
             setEntries((prev) => prev.filter((e) => e.id !== id));
         } catch (err) {
-            console.error('Failed to delete entry:', err);
+            console.error('Failed to delete entry:', err.response?.data || err.message);
         }
     };
 
     return (
-        <EntriesContext.Provider value={{ entries, addEntry, updateEntry, deleteEntry }}>
+        <EntriesContext.Provider value={{ entries, addEntry, updateEntry, deleteEntry, fetchEntries }}>
             {children}
         </EntriesContext.Provider>
     );
