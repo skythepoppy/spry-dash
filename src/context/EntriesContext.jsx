@@ -1,76 +1,60 @@
+// src/context/EntriesContext.js
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import api from '../api/axios';
 
 const EntriesContext = createContext();
 
 export function EntriesProvider({ children }) {
-    const [entries, setEntries] = useState(() => {
-    const stored = localStorage.getItem('entries');
-    if (stored) {
-        const parsed = JSON.parse(stored);
-        return parsed.map(e => ({
-            ...e,
-            amount: Number(e.amount), // ensure amount is always a number
-            timestamp: e.timestamp || new Date().toISOString() // fallback timestamp
-        }));
-    }
-    return [];
-});
+    const [entries, setEntries] = useState([]);
 
+    // Fetch entries for logged-in user
+    const fetchEntries = async () => {
+        try {
+            const res = await api.get('/entries');
+            setEntries(res.data);
+        } catch (err) {
+            console.error('Failed to fetch entries:', err);
+        }
+    };
 
-    // Persist entries to localStorage
     useEffect(() => {
-        localStorage.setItem('entries', JSON.stringify(entries));
-    }, [entries]);
+        fetchEntries();
+    }, []);
 
     // Add a new entry
-    const addEntry = (entry) => {
-        const newEntry = { ...entry, id: Date.now() };
-        setEntries((prev) => [...prev, newEntry]);
+    const addEntry = async (entry) => {
+        try {
+            const res = await api.post('/entries', entry);
+            setEntries((prev) => [...prev, { ...entry, id: res.data.entryId }]);
+        } catch (err) {
+            console.error('Failed to add entry:', err);
+        }
+    };
+
+    // Update an entry
+    const updateEntry = async (id, updates) => {
+        try {
+            await api.put(`/entries/${id}`, updates);
+            setEntries((prev) =>
+                prev.map((e) => (e.id === id ? { ...e, ...updates } : e))
+            );
+        } catch (err) {
+            console.error('Failed to update entry:', err);
+        }
     };
 
     // Delete an entry
-    const deleteEntry = (id) => {
-        setEntries((prev) => prev.filter((entry) => entry.id !== id));
+    const deleteEntry = async (id) => {
+        try {
+            await api.delete(`/entries/${id}`);
+            setEntries((prev) => prev.filter((e) => e.id !== id));
+        } catch (err) {
+            console.error('Failed to delete entry:', err);
+        }
     };
-
-    // Deduct or return savings safely
-    const deductSavings = (amount) => {
-        if (amount === 0) return;
-
-        setEntries((prev) => {
-            let remaining = amount;
-
-            if (amount > 0) {
-                // Deduct from savings
-                const updated = prev
-                    .map((e) => {
-                        if (e.type === 'saving' && remaining > 0) {
-                            const deduction = Math.min(Number(e.amount), remaining);
-                            remaining -= deduction;
-                            return { ...e, amount: Number(e.amount) - deduction };
-                        }
-                        return e;
-                    })
-                    .filter((e) => e.amount > 0); // remove zero-amount entries
-                return updated;
-            } else {
-                // Return money to savings
-                const returnAmount = -amount;
-                return [
-                    ...prev,
-                    { id: Date.now(), type: 'saving', amount: returnAmount }
-                ];
-            }
-        });
-    };
-
-    // Compute total available savings
-    const totalSavings = entries
-        .filter((e) => e.type === 'saving')
-        .reduce((sum, e) => sum + Number(e.amount), 0);
 
     return (
-        <EntriesContext.Provider value={{ entries, addEntry, deleteEntry, deductSavings, totalSavings }}>
+        <EntriesContext.Provider value={{ entries, addEntry, updateEntry, deleteEntry }}>
             {children}
         </EntriesContext.Provider>
     );
