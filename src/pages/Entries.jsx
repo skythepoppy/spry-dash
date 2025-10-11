@@ -10,12 +10,13 @@ export default function Entries() {
         e.preventDefault();
         if (!form.category || !form.amount) return;
 
-        // Add timestamp and ensure amount is a number
+        
         addEntry({ 
-            ...form, 
-            amount: Number(form.amount), 
-            timestamp: new Date().toISOString() 
-        }); 
+            type: form.type,
+            amount: Number(form.amount),
+            note: form.category,
+            created_at: new Date().toISOString()
+        });
 
         setForm({ category: '', amount: '', type: 'expense' });
     };
@@ -33,7 +34,7 @@ export default function Entries() {
         const lastMonth = [];
 
         entries.forEach((entry) => {
-            const entryDate = new Date(entry.timestamp || new Date()); // fallback to now
+            const entryDate = new Date(entry.created_at || new Date()); // backend field
             if (entryDate >= currentWeekStart) {
                 thisWeek.push({ ...entry, amount: Number(entry.amount) });
             } else if (entryDate >= lastWeekStart && entryDate < currentWeekStart) {
@@ -49,7 +50,9 @@ export default function Entries() {
     const { thisWeek, lastWeek, lastMonth } = categorizeEntries();
 
     const handleDelete = (id) => {
-        deleteEntry(id); 
+        if (window.confirm('Delete this entry?')) {
+            deleteEntry(id);
+        }
     };
 
     return (
@@ -117,10 +120,10 @@ export default function Entries() {
                                         >
                                             <div>
                                                 <span className="font-semibold capitalize block">
-                                                    {entry.category} — ${Number(entry.amount).toFixed(2)}
+                                                    {entry.note} — ${Number(entry.amount).toFixed(2)}
                                                 </span>
                                                 <span className="text-sm text-gray-500">
-                                                    {new Date(entry.timestamp).toLocaleString()}
+                                                    {new Date(entry.created_at).toLocaleString()}
                                                 </span>
                                             </div>
                                             <button

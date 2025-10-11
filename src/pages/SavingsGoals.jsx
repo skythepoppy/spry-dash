@@ -1,4 +1,3 @@
-// src/pages/SavingsGoals.jsx
 import React, { useState, useEffect } from 'react';
 import Navbar from '../components/Navbar';
 import { useSavingsGoals } from '../context/SavingsGoalsContext';
@@ -19,12 +18,12 @@ export default function SavingsGoals() {
     const [newGoal, setNewGoal] = useState({ title: '', goalAmount: '' });
     const [editingGoalId, setEditingGoalId] = useState(null);
     const [allocate, setAllocate] = useState({});
-    const [autoEdits, setAutoEdits] = useState({});
 
     const totalSavings = entries
         .filter((e) => e.type === 'saving')
         .reduce((sum, e) => sum + Number(e.amount), 0);
 
+    // Add Goal
     const handleAddGoal = (e) => {
         e.preventDefault();
         if (!newGoal.title || !newGoal.goalAmount) return;
@@ -32,6 +31,7 @@ export default function SavingsGoals() {
         setNewGoal({ title: '', goalAmount: '' });
     };
 
+    // Perform auto allocation whenever entries change
     useEffect(() => {
         if (totalSavings > 0) performAutoAllocation();
     }, [entries]);
@@ -133,7 +133,7 @@ export default function SavingsGoals() {
 
                                                     if (amount > totalSavings) {
                                                         alert('Not enough savings available!');
-                                                        return; // Stop allocation
+                                                        return; 
                                                     }
 
                                                     allocateToGoal(goal.id, amount);
@@ -144,10 +144,11 @@ export default function SavingsGoals() {
                                                 Allocate
                                             </button>
 
-
                                             {/* Delete */}
                                             <button
-                                                onClick={() => deleteGoal(goal.id)}
+                                                onClick={() => {
+                                                    if (window.confirm('Delete this goal?')) deleteGoal(goal.id);
+                                                }}
                                                 className="text-red-500 text-sm hover:underline"
                                             >
                                                 Delete
@@ -175,9 +176,11 @@ export default function SavingsGoals() {
                                     <span className="font-semibold">{goal.title}</span>
                                     <span className="text-green-600 font-bold">Completed</span>
                                 </div>
-                                <p className="text-sm text-gray-500">
-                                    Completed at: {new Date(goal.completedAt).toLocaleString()}
-                                </p>
+                                {goal.completedAt && (
+                                    <p className="text-sm text-gray-500">
+                                        Completed at: {new Date(goal.completedAt).toLocaleString()}
+                                    </p>
+                                )}
                                 <p className="text-sm text-gray-500 mt-1">
                                     ${goal.allocatedAmount.toFixed(2)} / ${goal.goalAmount}
                                 </p>
