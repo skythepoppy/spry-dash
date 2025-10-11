@@ -55,13 +55,13 @@ export function SavingsGoalsProvider({ children }) {
   };
 
   // Allocate money to goal
-  const allocateToGoal = (id, amount, skipDeduct = false) => {
+  const allocateToGoal = (id, amount) => {
     if (amount <= 0) return;
-    setGoals((prev) =>
-      prev.map((goal) => {
+
+    setGoals(prev => {
+      const updatedGoals = prev.map(goal => {
         if (goal.id === id) {
           const newAllocated = goal.allocatedAmount + amount;
-          if (!skipDeduct) deductSavings(amount); // deduct from savings unless skipping (used in auto allocation)
           return {
             ...goal,
             allocatedAmount: newAllocated,
@@ -69,9 +69,19 @@ export function SavingsGoalsProvider({ children }) {
           };
         }
         return goal;
-      })
-    );
+      });
+
+      // Deduct savings after updating goals
+      const allocatedGoal = updatedGoals.find(goal => goal.id === id);
+      if (allocatedGoal) {
+        // Use setTimeout 0 to schedule after render
+        setTimeout(() => deductSavings(amount), 0);
+      }
+
+      return updatedGoals;
+    });
   };
+
 
   // Lock auto settings
   const lockInAutoSettings = (id, autoPercentage, autoType) => {

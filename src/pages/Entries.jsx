@@ -10,7 +10,13 @@ export default function Entries() {
         e.preventDefault();
         if (!form.category || !form.amount) return;
 
-        addEntry(form); 
+        // Add timestamp and ensure amount is a number
+        addEntry({ 
+            ...form, 
+            amount: Number(form.amount), 
+            timestamp: new Date().toISOString() 
+        }); 
+
         setForm({ category: '', amount: '', type: 'expense' });
     };
 
@@ -27,20 +33,18 @@ export default function Entries() {
         const lastMonth = [];
 
         entries.forEach((entry) => {
-            const entryDate = new Date(entry.timestamp);
+            const entryDate = new Date(entry.timestamp || new Date()); // fallback to now
             if (entryDate >= currentWeekStart) {
-                thisWeek.push(entry);
+                thisWeek.push({ ...entry, amount: Number(entry.amount) });
             } else if (entryDate >= lastWeekStart && entryDate < currentWeekStart) {
-                lastWeek.push(entry);
+                lastWeek.push({ ...entry, amount: Number(entry.amount) });
             } else if (entryDate >= lastMonthStart) {
-                lastMonth.push(entry);
+                lastMonth.push({ ...entry, amount: Number(entry.amount) });
             }
         });
 
         return { thisWeek, lastWeek, lastMonth };
     };
-
-
 
     const { thisWeek, lastWeek, lastMonth } = categorizeEntries();
 
@@ -91,10 +95,10 @@ export default function Entries() {
 
                 {/* Entries List */}
                 <div className="space-y-8">
-                    {[
-                        { title: 'This Week', data: thisWeek },
-                        { title: 'Last Week', data: lastWeek },
-                        { title: 'Last Month', data: lastMonth },
+                    {[ 
+                        { title: 'This Week', data: thisWeek }, 
+                        { title: 'Last Week', data: lastWeek }, 
+                        { title: 'Last Month', data: lastMonth } 
                     ].map(({ title, data }) => (
                         <div key={title}>
                             <h2 className="text-xl font-semibold text-gray-700 mb-3">{title}</h2>
@@ -113,7 +117,7 @@ export default function Entries() {
                                         >
                                             <div>
                                                 <span className="font-semibold capitalize block">
-                                                    {entry.category} — ${entry.amount}
+                                                    {entry.category} — ${Number(entry.amount).toFixed(2)}
                                                 </span>
                                                 <span className="text-sm text-gray-500">
                                                     {new Date(entry.timestamp).toLocaleString()}

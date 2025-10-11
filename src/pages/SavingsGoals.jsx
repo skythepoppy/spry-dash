@@ -135,16 +135,23 @@ export default function SavingsGoals() {
                                         />
                                         <button
                                             onClick={() => {
-                                                const amount = Number(allocate[goal.id]);
+                                                let amount = Number(allocate[goal.id]);
                                                 if (amount > 0) {
-                                                    allocateToGoal(goal.id, amount);
-                                                    setAllocate({ ...allocate, [goal.id]: '' });
+                                                    if (amount > totalSavings) {
+                                                        alert('Not enough savings available!');
+                                                        amount = totalSavings; // optionally allocate max available
+                                                    }
+                                                    if (amount > 0) {
+                                                        allocateToGoal(goal.id, amount);
+                                                        setAllocate({ ...allocate, [goal.id]: '' });
+                                                    }
                                                 }
                                             }}
                                             className="bg-green-500 text-white px-4 py-1 rounded hover:bg-green-600 transition"
                                         >
                                             Allocate
                                         </button>
+
 
                                         {/* Auto Allocation */}
                                         <input
@@ -188,13 +195,17 @@ export default function SavingsGoals() {
                                                 const type = autoEdits[goal.id]?.autoType ?? goal.autoType;
                                                 lockInAutoSettings(goal.id, percentage, type);
 
-                                                const allocationAmount = (totalSavings * percentage) / 100;
+                                                // Calculate allocation amount
+                                                let allocationAmount = (totalSavings * percentage) / 100;
+                                                if (allocationAmount > totalSavings) allocationAmount = totalSavings;
+
                                                 if (allocationAmount > 0) allocateToGoal(goal.id, allocationAmount);
                                             }}
                                             className="text-blue-500 text-sm hover:underline"
                                         >
                                             Apply Auto
                                         </button>
+
 
                                         {/* Delete */}
                                         <button
