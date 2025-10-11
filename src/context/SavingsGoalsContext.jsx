@@ -16,6 +16,19 @@ export function SavingsGoalsProvider({ children }) {
     localStorage.setItem('goals', JSON.stringify(goals));
   }, [goals]);
 
+  // Helper to check if a goal should auto-allocate
+  const shouldAutoAllocate = (goal, now) => {
+    if (!goal.lastAutoApplied) return true;
+    const last = new Date(goal.lastAutoApplied);
+    if (goal.autoType === 'weekly') {
+      return (now - last) / (1000 * 60 * 60 * 24 * 7) >= 1;
+    }
+    if (goal.autoType === 'monthly') {
+      return now.getMonth() !== last.getMonth() || now.getFullYear() !== last.getFullYear();
+    }
+    return false;
+  };
+
   // Add goal
   const addGoal = (goal) => {
     setGoals((prev) => [
@@ -41,14 +54,14 @@ export function SavingsGoalsProvider({ children }) {
     setGoals((prev) => prev.filter((goal) => goal.id !== id));
   };
 
-  // Allocate money to goal (manual)
-  const allocateToGoal = (id, amount) => {
+  // Allocate money to goal
+  const allocateToGoal = (id, amount, skipDeduct = false) => {
     if (amount <= 0) return;
     setGoals((prev) =>
       prev.map((goal) => {
         if (goal.id === id) {
           const newAllocated = goal.allocatedAmount + amount;
-          deductSavings(amount); // deduct from savings
+          if (!skipDeduct) deductSavings(amount); // deduct from savings unless skipping (used in auto allocation)
           return {
             ...goal,
             allocatedAmount: newAllocated,
@@ -74,36 +87,28 @@ export function SavingsGoalsProvider({ children }) {
     if (totalSavings <= 0) return;
 
     const now = new Date();
-    const allocations = [];
 
-    const updatedGoals = goals.map((goal) => {
-      if (goal.autoPercentage > 0) {
-        const shouldAllocate = (() => {
-          if (!goal.lastAutoApplied) return true;
-          const last = new Date(goal.lastAutoApplied);
-          if (goal.autoType === 'weekly') {
-            return (now - last) / (1000 * 60 * 60 * 24 * 7) >= 1;
-          }
-          if (goal.autoType === 'monthly') {
-            return now.getMonth() !== last.getMonth() || now.getFullYear() !== last.getFullYear();
-          }
-          return false;
-        })();
+    // Collect allocations without immediately updating state to avoid re-render loops
+    const allocations = goals
+      .filter((goal) => goal.autoPercentage > 0 && shouldAutoAllocate(goal, now))
+      .map((goal) => ({
+        id: goal.id,
+        amount: (totalSavings * goal.autoPercentage) / 100,
+      }));
 
-        if (shouldAllocate) {
-          const allocation = (totalSavings * goal.autoPercentage) / 100;
-          allocations.push({ id: goal.id, amount: allocation });
+    // Update lastAutoApplied for the relevant goals
+    setGoals((prev) =>
+      prev.map((goal) => {
+        if (allocations.find((a) => a.id === goal.id)) {
           return { ...goal, lastAutoApplied: now.toISOString() };
         }
-      }
-      return goal;
-    });
+        return goal;
+      })
+    );
 
-    setGoals(updatedGoals);
-
-    // Deduct and update allocated amounts after state is updated
+    // Perform allocations after state update
     allocations.forEach(({ id, amount }) => {
-      if (amount > 0) allocateToGoal(id, amount);
+      if (amount > 0) allocateToGoal(id, amount, false);
     });
   };
 
