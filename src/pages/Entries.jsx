@@ -40,6 +40,8 @@ export default function Entries() {
         return { thisWeek, lastWeek, lastMonth };
     };
 
+
+
     const { thisWeek, lastWeek, lastMonth } = categorizeEntries();
 
     const handleDelete = (id) => {

@@ -5,12 +5,18 @@ import './index.css';
 import { EntriesProvider } from './context/EntriesContext.jsx';
 import { SavingsGoalsProvider } from './context/SavingsGoalsContext.jsx';
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
+function Root() {
+  return (
     <EntriesProvider>
       <SavingsGoalsProvider>
         <App />
       </SavingsGoalsProvider>
     </EntriesProvider>
-  </React.StrictMode>,
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <Root />
+  </React.StrictMode>
 );
