@@ -19,9 +19,9 @@ export default function SavingsGoals() {
     const [editingGoalId, setEditingGoalId] = useState(null);
     const [allocate, setAllocate] = useState({});
 
-    // Calculate total savings and allocated amounts
+    // Calculate total savings and available savings
     const totalSavings = entries
-        .filter((e) => e.type === 'saving')
+        .filter(e => e.type === 'saving')
         .reduce((sum, e) => sum + Number(e.amount), 0);
 
     const totalAllocated = activeGoals.reduce(
@@ -39,7 +39,7 @@ export default function SavingsGoals() {
         setNewGoal({ title: '', goalAmount: '' });
     };
 
-    // Auto allocation when entries update
+    // Auto allocation when entries change
     useEffect(() => {
         if (totalSavings > 0) performAutoAllocation();
     }, [entries]);
@@ -50,7 +50,7 @@ export default function SavingsGoals() {
             <div className="p-8">
                 <h1 className="text-3xl font-bold mb-6 text-gray-800">Savings Goals</h1>
                 <p className="mb-4 text-lg font-medium">
-                    Total Savings: ${totalSavings.toFixed(2)} | Available: ${availableSavings.toFixed(2)}
+                    Total Savings Available: ${availableSavings.toFixed(2)}
                 </p>
 
                 {/* Add Goal Form */}
@@ -62,14 +62,18 @@ export default function SavingsGoals() {
                         type="text"
                         placeholder="Goal Title"
                         value={newGoal.title}
-                        onChange={(e) => setNewGoal({ ...newGoal, title: e.target.value })}
+                        onChange={e =>
+                            setNewGoal({ ...newGoal, title: e.target.value })
+                        }
                         className="flex-1 border p-2 rounded focus:ring-2 focus:ring-blue-400 outline-none"
                     />
                     <input
                         type="number"
                         placeholder="Goal Amount"
                         value={newGoal.goalAmount}
-                        onChange={(e) => setNewGoal({ ...newGoal, goalAmount: e.target.value })}
+                        onChange={e =>
+                            setNewGoal({ ...newGoal, goalAmount: e.target.value })
+                        }
                         className="w-32 border p-2 rounded focus:ring-2 focus:ring-blue-400 outline-none"
                     />
                     <button
@@ -86,15 +90,14 @@ export default function SavingsGoals() {
                     {activeGoals.length === 0 ? (
                         <p className="text-gray-500 italic">No active goals.</p>
                     ) : (
-                        activeGoals.map((goal) => {
+                        activeGoals.map(goal => {
                             const progress = Math.min(
                                 (goal.allocatedAmount / goal.goalAmount) * 100,
                                 100
                             );
 
-                            // Max allocatable for this specific goal
-                            const remainingForGoal = goal.goalAmount - goal.allocatedAmount;
-                            const maxAllocatable = Math.min(remainingForGoal, availableSavings);
+                            const manualAmount = goal.manualAllocatedAmount || 0;
+                            const autoAmount = goal.allocatedAmount - manualAmount;
 
                             return (
                                 <div
@@ -129,15 +132,20 @@ export default function SavingsGoals() {
                                         ${goal.allocatedAmount.toFixed(2)} / ${goal.goalAmount}
                                     </p>
 
+                                    {/* Allocation breakdown */}
+                                    <p className="text-xs text-gray-400 mt-1">
+                                        Auto: ${autoAmount.toFixed(2)} | Manual: ${manualAmount.toFixed(2)}
+                                    </p>
+
                                     {editingGoalId === goal.id && (
                                         <div className="mt-4 flex flex-col sm:flex-row gap-3 items-center">
                                             {/* Manual Allocation */}
                                             <input
                                                 type="number"
                                                 min="0"
-                                                placeholder={`Max: $${maxAllocatable.toFixed(2)}`}
+                                                placeholder={`Max: $${availableSavings.toFixed(2)}`}
                                                 value={allocate[goal.id] ?? ''}
-                                                onChange={(e) =>
+                                                onChange={e =>
                                                     setAllocate({
                                                         ...allocate,
                                                         [goal.id]: e.target.value,
@@ -149,13 +157,12 @@ export default function SavingsGoals() {
                                                 onClick={() => {
                                                     const amount = Number(allocate[goal.id]);
                                                     if (amount <= 0) return;
-                                                    if (amount > maxAllocatable) {
-                                                        alert(
-                                                            'Not enough savings available for this goal!'
-                                                        );
+                                                    if (amount > availableSavings) {
+                                                        alert('Not enough savings available!');
                                                         return;
                                                     }
 
+                                                    // Track manual allocation separately
                                                     allocateToGoal(goal.id, amount);
                                                     setAllocate({ ...allocate, [goal.id]: '' });
                                                 }}
@@ -164,7 +171,7 @@ export default function SavingsGoals() {
                                                 Allocate
                                             </button>
 
-                                            {/* Delete Goal */}
+                                            {/* Delete */}
                                             <button
                                                 onClick={() => {
                                                     if (window.confirm('Delete this goal?'))
@@ -188,7 +195,7 @@ export default function SavingsGoals() {
                     {completedGoals.length === 0 ? (
                         <p className="text-gray-500 italic">No completed goals yet.</p>
                     ) : (
-                        completedGoals.map((goal) => (
+                        completedGoals.map(goal => (
                             <div
                                 key={goal.id}
                                 className="bg-white p-4 rounded-xl shadow-sm border border-gray-200"
