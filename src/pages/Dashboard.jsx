@@ -3,7 +3,7 @@ import Navbar from '../components/Navbar';
 import Card from '../components/Card';
 import { DollarSign, PiggyBank, TrendingUp, CalendarDays, Wallet } from 'lucide-react';
 import { useEntries } from '../context/EntriesContext';
-import { useSavingsGoals } from '../context/GoalsContext';
+import { useSavingsGoals } from '../context/SavingsGoalsContext';
 
 export default function Dashboard() {
     const { entries } = useEntries();
