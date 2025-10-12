@@ -1,154 +1,126 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import api from '../api/axios';
 import { useEntries } from './EntriesContext';
 
 const SavingsGoalsContext = createContext();
 
 export function SavingsGoalsProvider({ children }) {
-  const [goals, setGoals] = useState(() => {
-    const stored = localStorage.getItem('goals');
-    return stored
-      ? JSON.parse(stored).map(g => ({ ...g, allocatedAmount: Number(g.allocatedAmount) || 0 }))
-      : [];
+  const [goals, setGoals] = useState([]);
+  const { entries } = useEntries();
+  const token = localStorage.getItem('token');
+
+  const authHeaders = () => ({
+    headers: { Authorization: `Bearer ${token}` },
   });
 
-  const { entries, deductSavings } = useEntries();
-
-  // Persist goals to localStorage
-  useEffect(() => {
-    localStorage.setItem('goals', JSON.stringify(goals));
-  }, [goals]);
-
-  // Check if goal should auto-allocate
-  const shouldAutoAllocate = (goal, now) => {
-    if (!goal.lastAutoApplied) return true;
-    const last = new Date(goal.lastAutoApplied);
-    if (goal.autoType === 'weekly') {
-      return (now - last) / (1000 * 60 * 60 * 24 * 7) >= 1;
+  // Fetch goals from backend
+  const fetchGoals = async () => {
+    if (!token) return;
+    try {
+      const res = await api.get('/goals', authHeaders());
+      // Ensure allocatedAmount is always a number
+      setGoals(res.data.map(g => ({ allocated_amount: g.allocated_amount || 0, ...g })));
+    } catch (err) {
+      console.error('Failed to fetch goals:', err.response?.data || err.message);
     }
-    if (goal.autoType === 'monthly') {
-      return now.getMonth() !== last.getMonth() || now.getFullYear() !== last.getFullYear();
-    }
-    return false;
   };
 
-  // Add a new goal
-  const addGoal = (goal) => {
-    setGoals(prev => [
-      ...prev,
-      {
-        ...goal,
-        id: Date.now(),
-        allocatedAmount: 0,
-        completed: false,
-        autoPercentage: goal.autoPercentage || 0,
-        autoType: goal.autoType || 'monthly',
-        lastAutoApplied: null,
-      },
-    ]);
+  useEffect(() => {
+    fetchGoals();
+  }, [token]);
+
+  // Add new goal (uses `note` now)
+  const addGoal = async (goal) => {
+    try {
+      const res = await api.post('/goals', {
+        note: goal.note,
+        goal_amount: goal.goal_amount,
+        allocated_amount: 0,
+      }, authHeaders());
+
+      setGoals(prev => [
+        ...prev,
+        res.data.goal || { ...goal, id: res.data.goalId, allocated_amount: 0, completed: false }
+      ]);
+    } catch (err) {
+      console.error('Failed to add goal:', err.response?.data || err.message);
+    }
   };
 
   // Delete goal
-  const deleteGoal = (id) => {
-    const goalToDelete = goals.find(g => g.id === id);
-    if (goalToDelete && goalToDelete.allocatedAmount > 0) {
-      deductSavings(-goalToDelete.allocatedAmount); // return to savings
+  const deleteGoal = async (id) => {
+    try {
+      await api.delete(`/goals/${id}`, authHeaders());
+      setGoals(prev => prev.filter(g => g.id !== id));
+    } catch (err) {
+      console.error('Failed to delete goal:', err.response?.data || err.message);
     }
-    setGoals(prev => prev.filter(g => g.id !== id));
   };
 
-  // Inside allocateToGoal
-  const allocateToGoal = (id, requestedAmount) => {
-    if (requestedAmount <= 0) return;
-
+  // Allocate funds manually
+  const allocateToGoal = async (id, amount) => {
     const totalSavings = entries
       .filter(e => e.type === 'saving')
       .reduce((sum, e) => sum + Number(e.amount), 0);
 
-    const amount = Math.min(requestedAmount, totalSavings);
-    if (amount <= 0) return;
+    const totalAllocated = goals.reduce((sum, g) => sum + Number(g.allocated_amount || 0), 0);
+    const availableSavings = totalSavings - totalAllocated;
 
-    setGoals(prev =>
-      prev.map(goal => {
-        if (goal.id === id) {
-          const newAllocated = goal.allocatedAmount + amount;
-          const completed = newAllocated >= goal.goalAmount;
-          return {
-            ...goal,
-            allocatedAmount: newAllocated,
-            completed,
-            completedAt: completed ? new Date().toISOString() : goal.completedAt,
-          };
-        }
-        return goal;
-      })
-    );
+    if (amount > availableSavings) {
+      alert('Not enough savings available!');
+      return 0;
+    }
 
-    deductSavings(amount);
+    const goal = goals.find(g => g.id === id);
+    if (!goal) return 0;
+
+    // 🔧 use 0 as default if undefined
+    const currentAllocated = Number(goal.allocated_amount || 0);
+    const goalAmount = Number(goal.goal_amount || 0);
+
+    const remainingForGoal = goalAmount - currentAllocated;
+    const allocation = Math.min(amount, remainingForGoal);
+    const newAllocated = currentAllocated + allocation;
+    const completed = newAllocated >= goalAmount;
+
+    console.log("➡️ Sending allocation update:", { id, allocated_amount: newAllocated, completed });
+
+    try {
+      const updatedGoal = await api.put(
+        `/goals/${id}`,
+        { allocated_amount: newAllocated, completed },
+        authHeaders()
+      );
+
+      setGoals(prev =>
+        prev.map(g => g.id === id ? { ...g, ...updatedGoal.data } : g)
+      );
+
+      return allocation;
+    } catch (err) {
+      console.error('Failed to allocate funds:', err.response?.data || err.message);
+      return 0;
+    }
   };
 
 
-  // Lock auto allocation settings
-  const lockInAutoSettings = (id, autoPercentage, autoType) => {
-    setGoals(prev =>
-      prev.map(goal =>
-        goal.id === id ? { ...goal, autoPercentage, autoType } : goal
-      )
-    );
-  };
 
-  // Auto allocate savings to goals
-  const performAutoAllocation = () => {
-    const totalSavings = entries
-      .filter(e => e.type === 'saving')
-      .reduce((sum, e) => sum + Number(e.amount), 0);
-    if (totalSavings <= 0) return;
-
-    const now = new Date();
-
-    const allocations = goals
-      .filter(goal => goal.autoPercentage > 0 && shouldAutoAllocate(goal, now))
-      .map(goal => ({
-        id: goal.id,
-        amount: (totalSavings * goal.autoPercentage) / 100,
-      }));
-
-    // Update lastAutoApplied timestamp
-    setGoals(prev =>
-      prev.map(goal => {
-        if (allocations.find(a => a.id === goal.id)) {
-          return { ...goal, lastAutoApplied: now.toISOString() };
-        }
-        return goal;
-      })
-    );
-
-    // Allocate funds
-    allocations.forEach(({ id, amount }) => {
-      if (amount > 0) allocateToGoal(id, amount);
-    });
-  };
-
-  const activeGoals = goals.filter(g => !g.completed);
-  const completedGoals = goals.filter(g => g.completed);
 
   return (
     <SavingsGoalsContext.Provider
       value={{
         goals,
-        activeGoals,
-        completedGoals,
+        activeGoals: goals.filter(g => !g.completed),
+        completedGoals: goals.filter(g => g.completed),
         addGoal,
         deleteGoal,
         allocateToGoal,
-        lockInAutoSettings,
-        performAutoAllocation,
+        fetchGoals,
       }}
     >
       {children}
     </SavingsGoalsContext.Provider>
   );
-
-
 }
 
 export const useSavingsGoals = () => useContext(SavingsGoalsContext);

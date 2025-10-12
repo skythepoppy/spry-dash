@@ -1,17 +1,48 @@
-// src/pages/LoginPage.jsx
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import api from '../api/axios';
 
 export default function LoginPage() {
     const navigate = useNavigate();
     const [isLogin, setIsLogin] = useState(true);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [username, setUsername] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [errorMsg, setErrorMsg] = useState('');
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        // TEMP: no backend yet — just redirect
-        navigate('/dashboard');
+        setLoading(true);
+        setErrorMsg('');
+
+        try {
+            if (isLogin) {
+                // LOGIN
+                const res = await api.post('/auth/login', { email, password });
+                localStorage.setItem('token', res.data.token);
+                localStorage.setItem('userId', res.data.userId);
+                localStorage.setItem('username', res.data.username);
+
+                navigate('/dashboard');
+            } else {
+                // SIGNUP
+                await api.post('/auth/signup', { username, email, password });
+
+                // Auto-login after signup
+                const loginRes = await api.post('/auth/login', { email, password });
+                localStorage.setItem('token', loginRes.data.token);
+                localStorage.setItem('userId', loginRes.data.userId);
+                localStorage.setItem('username', loginRes.data.username);
+
+                navigate('/dashboard');
+            }
+        } catch (err) {
+            console.error(err);
+            setErrorMsg(err.response?.data?.error || 'Something went wrong. Please try again.');
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -22,6 +53,16 @@ export default function LoginPage() {
                 </h1>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
+                    {!isLogin && (
+                        <input
+                            type="text"
+                            placeholder="Username"
+                            value={username}
+                            onChange={(e) => setUsername(e.target.value)}
+                            required
+                            className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        />
+                    )}
                     <input
                         type="email"
                         placeholder="Email"
@@ -39,11 +80,16 @@ export default function LoginPage() {
                         className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
                     />
 
+                    {errorMsg && (
+                        <p className="text-red-500 text-center text-sm">{errorMsg}</p>
+                    )}
+
                     <button
                         type="submit"
-                        className="w-full bg-blue-500 text-white font-semibold py-2 rounded-lg hover:bg-blue-600 transition"
+                        disabled={loading}
+                        className="w-full bg-blue-500 text-white font-semibold py-2 rounded-lg hover:bg-blue-600 transition disabled:opacity-50"
                     >
-                        {isLogin ? 'Log In' : 'Sign Up'}
+                        {loading ? 'Please wait...' : isLogin ? 'Log In' : 'Sign Up'}
                     </button>
                 </form>
 

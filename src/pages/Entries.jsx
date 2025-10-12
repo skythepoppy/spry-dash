@@ -10,12 +10,12 @@ export default function Entries() {
         e.preventDefault();
         if (!form.category || !form.amount) return;
 
-        // Add timestamp and ensure amount is a number
-        addEntry({ 
-            ...form, 
-            amount: Number(form.amount), 
-            timestamp: new Date().toISOString() 
-        }); 
+        addEntry({
+            type: form.type,
+            amount: Number(form.amount),
+            note: form.category,
+            created_at: new Date().toISOString(),
+        });
 
         setForm({ category: '', amount: '', type: 'expense' });
     };
@@ -24,8 +24,10 @@ export default function Entries() {
         const now = new Date();
         const currentWeekStart = new Date(now);
         currentWeekStart.setDate(now.getDate() - now.getDay());
+
         const lastWeekStart = new Date(currentWeekStart);
         lastWeekStart.setDate(currentWeekStart.getDate() - 7);
+
         const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
         const thisWeek = [];
@@ -33,7 +35,7 @@ export default function Entries() {
         const lastMonth = [];
 
         entries.forEach((entry) => {
-            const entryDate = new Date(entry.timestamp || new Date()); // fallback to now
+            const entryDate = new Date(entry.created_at || new Date());
             if (entryDate >= currentWeekStart) {
                 thisWeek.push({ ...entry, amount: Number(entry.amount) });
             } else if (entryDate >= lastWeekStart && entryDate < currentWeekStart) {
@@ -49,7 +51,7 @@ export default function Entries() {
     const { thisWeek, lastWeek, lastMonth } = categorizeEntries();
 
     const handleDelete = (id) => {
-        deleteEntry(id); 
+        if (window.confirm('Delete this entry?')) deleteEntry(id);
     };
 
     return (
@@ -95,10 +97,10 @@ export default function Entries() {
 
                 {/* Entries List */}
                 <div className="space-y-8">
-                    {[ 
-                        { title: 'This Week', data: thisWeek }, 
-                        { title: 'Last Week', data: lastWeek }, 
-                        { title: 'Last Month', data: lastMonth } 
+                    {[
+                        { title: 'This Week', data: thisWeek },
+                        { title: 'Last Week', data: lastWeek },
+                        { title: 'Last Month', data: lastMonth },
                     ].map(({ title, data }) => (
                         <div key={title}>
                             <h2 className="text-xl font-semibold text-gray-700 mb-3">{title}</h2>
@@ -117,10 +119,10 @@ export default function Entries() {
                                         >
                                             <div>
                                                 <span className="font-semibold capitalize block">
-                                                    {entry.category} — ${Number(entry.amount).toFixed(2)}
+                                                    {entry.note} — ${Number(entry.amount).toFixed(2)}
                                                 </span>
                                                 <span className="text-sm text-gray-500">
-                                                    {new Date(entry.timestamp).toLocaleString()}
+                                                    {new Date(entry.created_at).toLocaleString()}
                                                 </span>
                                             </div>
                                             <button
