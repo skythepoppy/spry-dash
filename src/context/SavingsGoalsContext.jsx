@@ -74,21 +74,26 @@ export function SavingsGoalsProvider({ children }) {
     const goal = goals.find(g => g.id === id);
     if (!goal) return 0;
 
-    const remainingForGoal = goal.goal_amount - goal.allocated_amount;
+    // 🔧 use 0 as default if undefined
+    const currentAllocated = Number(goal.allocated_amount || 0);
+    const goalAmount = Number(goal.goal_amount || 0);
+
+    const remainingForGoal = goalAmount - currentAllocated;
     const allocation = Math.min(amount, remainingForGoal);
-    const completed = goal.allocated_amount + allocation >= goal.goal_amount;
+    const newAllocated = currentAllocated + allocation;
+    const completed = newAllocated >= goalAmount;
+
+    console.log("➡️ Sending allocation update:", { id, allocated_amount: newAllocated, completed });
 
     try {
-      // ✅ FIX: Send camelCase key "allocatedAmount" to match backend
       const updatedGoal = await api.put(
         `/goals/${id}`,
-        { allocatedAmount: goal.allocated_amount + allocation, completed },
+        { allocated_amount: newAllocated, completed },
         authHeaders()
       );
 
-      // ✅ Update state with backend response
       setGoals(prev =>
-        prev.map(g => (g.id === id ? { ...g, ...updatedGoal.data } : g))
+        prev.map(g => g.id === id ? { ...g, ...updatedGoal.data } : g)
       );
 
       return allocation;
@@ -97,6 +102,7 @@ export function SavingsGoalsProvider({ children }) {
       return 0;
     }
   };
+
 
 
 
