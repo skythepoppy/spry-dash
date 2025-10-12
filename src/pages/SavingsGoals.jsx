@@ -41,10 +41,7 @@ export default function SavingsGoals() {
         setNewGoal({ note: '', goal_amount: '' });
     };
 
-    // Fetch goals on mount
-    useEffect(() => {
-        fetchGoals();
-    }, []);
+    
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -90,8 +87,8 @@ export default function SavingsGoals() {
                     ) : (
                         activeGoals.map(goal => {
                             const allocated = Number(goal.allocated_amount || 0);
-                            const goalAmount = Number(goal.goal_amount || 0);
-                            const progress = goalAmount > 0 ? Math.min((allocated / goalAmount) * 100, 100) : 0;
+                            const goal_amount = Number(goal.goal_amount || 0);
+                            const progress = goal_amount > 0 ? Math.min((allocated / goal_amount) * 100, 100) : 0;
 
                             let progressColor = 'bg-red-500';
                             if (progress >= 75) progressColor = 'bg-green-500';
@@ -125,7 +122,7 @@ export default function SavingsGoals() {
                                     </div>
 
                                     <p className="text-sm text-gray-500 mt-1">
-                                        ${allocated.toFixed(2)} / ${goalAmount} — {(goalAmount - allocated).toFixed(2)} remaining
+                                        ${allocated.toFixed(2)} / ${goal_amount} — {(goal_amount - allocated).toFixed(2)} remaining
                                     </p>
 
                                     {editingGoalId === goal.id && (
@@ -151,6 +148,7 @@ export default function SavingsGoals() {
                                                     }
 
                                                     await allocateToGoal(goal.id, amount);
+                                                    await fetchGoals();
                                                     setAllocate({ ...allocate, [goal.id]: '' }); 
                                                 }}
                                                 className="bg-green-500 text-white px-4 py-1 rounded hover:bg-green-600 transition"
@@ -197,7 +195,7 @@ export default function SavingsGoals() {
                                     </p>
                                 )}
                                 <p className="text-sm text-gray-500 mt-1">
-                                    ${Number(goal.allocated_amount || 0).toFixed(2)} / ${goal.goalAmount}
+                                    ${Number(goal.allocated_amount || 0).toFixed(2)} / ${goal.goal_amount}
                                 </p>
                             </div>
                         ))

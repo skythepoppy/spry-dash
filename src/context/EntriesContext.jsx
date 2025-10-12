@@ -27,14 +27,18 @@ export function EntriesProvider({ children }) {
     }, [token]);
 
     // Add a new entry
-    const addEntry = async (entry) => {
+    const addEntry = async (entryData) => {
         try {
-            const res = await api.post('/entries', entry, authHeaders());
-            setEntries((prev) => [...prev, res.data.entry]); // assumes backend returns full entry object
+            const response = await api.post('/entries', entryData, authHeaders());
+            const newEntry = response.data; // full row from backend
+            setEntries(prev => [newEntry, ...prev]);
+            return newEntry;
         } catch (err) {
-            console.error('Failed to add entry:', err.response?.data || err.message);
+            console.error('Failed to add entry:', err);
+            throw err;
         }
     };
+
 
     // Update an entry
     const updateEntry = async (id, updates) => {

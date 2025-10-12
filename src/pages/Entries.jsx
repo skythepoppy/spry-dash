@@ -6,19 +6,23 @@ export default function Entries() {
     const { entries, addEntry, deleteEntry } = useEntries();
     const [form, setForm] = useState({ category: '', amount: '', type: 'expense' });
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
         if (!form.category || !form.amount) return;
 
-        addEntry({
-            type: form.type,
-            amount: Number(form.amount),
-            note: form.category,
-            created_at: new Date().toISOString(),
-        });
+        try {
+            await addEntry({
+                type: form.type,
+                amount: Number(form.amount),
+                note: form.category,
+            });
 
-        setForm({ category: '', amount: '', type: 'expense' });
+            setForm({ category: '', amount: '', type: 'expense' });
+        } catch (err) {
+            console.error('Failed to add entry:', err);
+        }
     };
+
 
     const categorizeEntries = () => {
         const now = new Date();
@@ -35,7 +39,8 @@ export default function Entries() {
         const lastMonth = [];
 
         entries.forEach((entry) => {
-            const entryDate = new Date(entry.created_at || new Date());
+            // Fallback to current date if created_at is missing
+            const entryDate = entry.created_at ? new Date(entry.created_at) : new Date();
             if (entryDate >= currentWeekStart) {
                 thisWeek.push({ ...entry, amount: Number(entry.amount) });
             } else if (entryDate >= lastWeekStart && entryDate < currentWeekStart) {
@@ -111,18 +116,19 @@ export default function Entries() {
                                     {data.map((entry) => (
                                         <div
                                             key={entry.id}
-                                            className={`flex justify-between items-center p-4 rounded-xl border ${
-                                                entry.type === 'expense'
+                                            className={`flex justify-between items-center p-4 rounded-xl border ${entry.type === 'expense'
                                                     ? 'bg-red-50 border-red-200'
                                                     : 'bg-green-50 border-green-200'
-                                            }`}
+                                                }`}
                                         >
                                             <div>
                                                 <span className="font-semibold capitalize block">
                                                     {entry.note} — ${Number(entry.amount).toFixed(2)}
                                                 </span>
                                                 <span className="text-sm text-gray-500">
-                                                    {new Date(entry.created_at).toLocaleString()}
+                                                    {entry.created_at
+                                                        ? new Date(entry.created_at).toLocaleString()
+                                                        : 'Just now'}
                                                 </span>
                                             </div>
                                             <button

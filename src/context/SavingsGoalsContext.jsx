@@ -13,13 +13,16 @@ export function SavingsGoalsProvider({ children }) {
     headers: { Authorization: `Bearer ${token}` },
   });
 
-  // Fetch goals from backend
+  // Fetch goals
   const fetchGoals = async () => {
     if (!token) return;
     try {
       const res = await api.get('/goals', authHeaders());
-      // Ensure allocatedAmount is always a number
-      setGoals(res.data.map(g => ({ allocated_amount: g.allocated_amount || 0, ...g })));
+      setGoals(res.data.map(g => ({
+        ...g,
+        allocated_amount: Number(g.allocated_amount || 0),
+        goal_amount: Number(g.goal_amount || 0)
+      })));
     } catch (err) {
       console.error('Failed to fetch goals:', err.response?.data || err.message);
     }
@@ -29,18 +32,18 @@ export function SavingsGoalsProvider({ children }) {
     fetchGoals();
   }, [token]);
 
-  // Add new goal (uses `note` now)
+  // Add new goal
   const addGoal = async (goal) => {
     try {
-      const res = await api.post('/goals', {
-        note: goal.note,
-        goal_amount: goal.goal_amount,
-        allocated_amount: 0,
-      }, authHeaders());
+      const res = await api.post(
+        '/goals',
+        { note: goal.note, goal_amount: goal.goal_amount },
+        authHeaders()
+      );
 
       setGoals(prev => [
         ...prev,
-        res.data.goal || { ...goal, id: res.data.goalId, allocated_amount: 0, completed: false }
+        { ...goal, id: res.data.goalId, allocated_amount: 0, completed: 0 }
       ]);
     } catch (err) {
       console.error('Failed to add goal:', err.response?.data || err.message);
@@ -74,7 +77,6 @@ export function SavingsGoalsProvider({ children }) {
     const goal = goals.find(g => g.id === id);
     if (!goal) return 0;
 
-    // 🔧 use 0 as default if undefined
     const currentAllocated = Number(goal.allocated_amount || 0);
     const goalAmount = Number(goal.goal_amount || 0);
 
@@ -83,28 +85,20 @@ export function SavingsGoalsProvider({ children }) {
     const newAllocated = currentAllocated + allocation;
     const completed = newAllocated >= goalAmount;
 
-    console.log("➡️ Sending allocation update:", { id, allocated_amount: newAllocated, completed });
-
     try {
-      const updatedGoal = await api.put(
+      const res = await api.put(
         `/goals/${id}`,
         { allocated_amount: newAllocated, completed },
         authHeaders()
       );
 
-      setGoals(prev =>
-        prev.map(g => g.id === id ? { ...g, ...updatedGoal.data } : g)
-      );
-
+      setGoals(prev => prev.map(g => (g.id === id ? res.data : g)));
       return allocation;
     } catch (err) {
       console.error('Failed to allocate funds:', err.response?.data || err.message);
       return 0;
     }
   };
-
-
-
 
   return (
     <SavingsGoalsContext.Provider
