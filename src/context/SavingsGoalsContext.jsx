@@ -18,11 +18,13 @@ export function SavingsGoalsProvider({ children }) {
     if (!token) return;
     try {
       const res = await api.get('/goals', authHeaders());
-      setGoals(res.data.map(g => ({
-        ...g,
-        allocated_amount: Number(g.allocated_amount || 0),
-        goal_amount: Number(g.goal_amount || 0)
-      })));
+      setGoals(
+        res.data.map(g => ({
+          ...g,
+          allocated_amount: Number(g.allocated_amount || 0),
+          goal_amount: Number(g.goal_amount || 0),
+        }))
+      );
     } catch (err) {
       console.error('Failed to fetch goals:', err.response?.data || err.message);
     }
@@ -33,7 +35,7 @@ export function SavingsGoalsProvider({ children }) {
   }, [token]);
 
   // Add new goal
-  const addGoal = async (goal) => {
+  const addGoal = async goal => {
     try {
       const res = await api.post(
         '/goals',
@@ -43,7 +45,12 @@ export function SavingsGoalsProvider({ children }) {
 
       setGoals(prev => [
         ...prev,
-        { ...goal, id: res.data.goalId, allocated_amount: 0, completed: 0 }
+        {
+          ...goal,
+          id: res.data.id || res.data.goalId,
+          allocated_amount: 0,
+          completed: 0,
+        },
       ]);
     } catch (err) {
       console.error('Failed to add goal:', err.response?.data || err.message);
@@ -51,7 +58,7 @@ export function SavingsGoalsProvider({ children }) {
   };
 
   // Delete goal
-  const deleteGoal = async (id) => {
+  const deleteGoal = async id => {
     try {
       await api.delete(`/goals/${id}`, authHeaders());
       setGoals(prev => prev.filter(g => g.id !== id));
@@ -77,13 +84,10 @@ export function SavingsGoalsProvider({ children }) {
     const goal = goals.find(g => g.id === id);
     if (!goal) return 0;
 
-    const currentAllocated = Number(goal.allocated_amount || 0);
-    const goalAmount = Number(goal.goal_amount || 0);
-
-    const remainingForGoal = goalAmount - currentAllocated;
+    const remainingForGoal = goal.goal_amount - goal.allocated_amount;
     const allocation = Math.min(amount, remainingForGoal);
-    const newAllocated = currentAllocated + allocation;
-    const completed = newAllocated >= goalAmount;
+    const newAllocated = goal.allocated_amount + allocation;
+    const completed = newAllocated >= goal.goal_amount;
 
     try {
       const res = await api.put(
@@ -92,7 +96,15 @@ export function SavingsGoalsProvider({ children }) {
         authHeaders()
       );
 
-      setGoals(prev => prev.map(g => (g.id === id ? res.data : g)));
+      // Normalize returned goal
+      const updatedGoal = {
+        ...res.data,
+        allocated_amount: Number(res.data.allocated_amount || 0),
+        goal_amount: Number(res.data.goal_amount || 0),
+      };
+
+      setGoals(prev => prev.map(g => (g.id === id ? updatedGoal : g)));
+
       return allocation;
     } catch (err) {
       console.error('Failed to allocate funds:', err.response?.data || err.message);
