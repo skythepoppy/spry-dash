@@ -1,83 +1,83 @@
 import React, { useState, useEffect } from 'react';
-import { useExpenses } from '../context/ExpensesContext';
+import { useEntries } from '../context/EntriesContext';
 
 export default function ExpensesTab() {
-    const { expenses, addExpense, deleteExpense, fetchExpenses } = useExpenses();
+    const { filteredEntries, addEntry, deleteEntry, currentMonth, setCurrentMonth, currentYear, setCurrentYear, fetchEntries } = useEntries();
     const [form, setForm] = useState({ category: '', amount: '' });
-    const [month, setMonth] = useState(new Date().getMonth() + 1); // current month
-    const [year, setYear] = useState(new Date().getFullYear());
+    const [submitting, setSubmitting] = useState(false);
 
+    // Fetch entries when month or year changes
     useEffect(() => {
-        fetchExpenses(month, year);
-    }, [month, year]);
+        fetchEntries(currentMonth, currentYear);
+    }, [currentMonth, currentYear, fetchEntries]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!form.category || !form.amount) return;
-        await addExpense({ category: form.category, amount: Number(form.amount), month, year });
-        setForm({ category: '', amount: '' });
+        if (!form.category.trim() || !form.amount) return;
+
+        try {
+            setSubmitting(true);
+            await addEntry({
+                type: 'expense',
+                note: form.category.trim(),
+                amount: Number(form.amount),
+                created_at: new Date().toISOString()
+            });
+            setForm({ category: '', amount: '' });
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     const handleDelete = async (id) => {
         if (!window.confirm('Delete this expense?')) return;
-        await deleteExpense(id);
+        await deleteEntry(id);
     };
 
     return (
         <div>
-            {/* Month Selector */}
             <div className="flex gap-4 mb-4">
+                <select value={currentMonth} onChange={e => setCurrentMonth(Number(e.target.value))}>
+                    {[...Array(12)].map((_, i) => (
+                        <option key={i+1} value={i+1}>{i+1}</option>
+                    ))}
+                </select>
                 <input
-                    type="month"
-                    value={`${year}-${month.toString().padStart(2, '0')}`}
-                    onChange={(e) => {
-                        const [y, m] = e.target.value.split('-');
-                        setYear(Number(y));
-                        setMonth(Number(m));
-                    }}
-                    className="border p-2 rounded"
+                    type="number"
+                    value={currentYear}
+                    onChange={e => setCurrentYear(Number(e.target.value))}
+                    className="w-24 border p-1 rounded"
                 />
             </div>
 
-            {/* Add Expense Form */}
-            <form onSubmit={handleSubmit} className="flex gap-2 mb-4">
+            <form onSubmit={handleSubmit} className="flex gap-2 mb-6">
                 <input
                     type="text"
                     placeholder="Category"
                     value={form.category}
-                    onChange={(e) => setForm({ ...form, category: e.target.value })}
-                    className="border p-2 rounded flex-1"
+                    onChange={e => setForm({ ...form, category: e.target.value })}
+                    className="flex-1 border p-2 rounded"
                 />
                 <input
                     type="number"
                     placeholder="Amount"
                     value={form.amount}
-                    onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                    className="border p-2 rounded w-32"
+                    onChange={e => setForm({ ...form, amount: e.target.value })}
+                    className="w-32 border p-2 rounded"
                 />
-                <button type="submit" className="bg-blue-500 text-white px-4 py-2 rounded">
-                    Add
+                <button type="submit" disabled={submitting} className="bg-blue-500 text-white px-4 py-2 rounded">
+                    {submitting ? 'Adding...' : 'Add'}
                 </button>
             </form>
 
-            {/* Expense List */}
-            {expenses.length === 0 ? (
-                <p className="text-gray-500 italic">No expenses this month.</p>
-            ) : (
-                <div className="space-y-2">
-                    {expenses.map((e) => (
-                        <div key={e.id} className="flex justify-between p-3 border rounded">
-                            <span>{e.category} — ${e.amount.toFixed(2)}</span>
-                            <button
-                                onClick={() => handleDelete(e.id)}
-                                className="text-red-500 hover:text-red-700"
-                            >
-                                Delete
-                            </button>
-                        </div>
-                    ))}
-                </div>
-            )}
+            <div className="space-y-3">
+                {filteredEntries.filter(e => e.type === 'expense').map(entry => (
+                    <div key={entry.id} className="flex justify-between items-center p-3 border rounded bg-red-50 border-red-200">
+                        <span>{entry.note} — ${Number(entry.amount).toFixed(2)}</span>
+                        <button onClick={() => handleDelete(entry.id)} className="text-red-600 hover:underline">Delete</button>
+                    </div>
+                ))}
+            </div>
         </div>
     );
 }

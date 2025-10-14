@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import api from '../api/axios';
 
 const EntriesContext = createContext();
@@ -9,7 +9,10 @@ export function EntriesProvider({ children }) {
     const [error, setError] = useState(null);
     const [token, setToken] = useState(localStorage.getItem('token'));
 
-    // Automatically keep token in sync if it changes elsewhere
+    const [currentMonth, setCurrentMonth] = useState(new Date().getMonth() + 1); // 1-12
+    const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+
+    // Sync token if it changes elsewhere
     useEffect(() => {
         const handleStorageChange = () => setToken(localStorage.getItem('token'));
         window.addEventListener('storage', handleStorageChange);
@@ -20,7 +23,6 @@ export function EntriesProvider({ children }) {
         headers: { Authorization: `Bearer ${token}` },
     }), [token]);
 
-    // Fetch all entries for logged-in user
     const fetchEntries = useCallback(async () => {
         if (!token) return;
         setLoading(true);
@@ -40,7 +42,6 @@ export function EntriesProvider({ children }) {
         fetchEntries();
     }, [fetchEntries]);
 
-    // Add a new entry
     const addEntry = async (entryData) => {
         try {
             const res = await api.post('/entries', entryData, authHeaders());
@@ -53,7 +54,6 @@ export function EntriesProvider({ children }) {
         }
     };
 
-    // Update existing entry
     const updateEntry = async (id, updates) => {
         try {
             const res = await api.put(`/entries/${id}`, updates, authHeaders());
@@ -68,7 +68,6 @@ export function EntriesProvider({ children }) {
         }
     };
 
-    // Delete an entry
     const deleteEntry = async (id) => {
         try {
             await api.delete(`/entries/${id}`, authHeaders());
@@ -79,16 +78,32 @@ export function EntriesProvider({ children }) {
         }
     };
 
+    // Filter entries by current month/year
+    const filteredEntries = useMemo(() => {
+        return entries.filter(e => {
+            const date = e.created_at ? new Date(e.created_at) : new Date();
+            return (
+                date.getMonth() + 1 === currentMonth &&
+                date.getFullYear() === currentYear
+            );
+        });
+    }, [entries, currentMonth, currentYear]);
+
     return (
         <EntriesContext.Provider
             value={{
                 entries,
+                filteredEntries,
                 loading,
                 error,
                 addEntry,
                 updateEntry,
                 deleteEntry,
-                fetchEntries
+                fetchEntries,
+                currentMonth,
+                currentYear,
+                setCurrentMonth,
+                setCurrentYear
             }}
         >
             {children}

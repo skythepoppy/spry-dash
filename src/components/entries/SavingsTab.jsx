@@ -1,74 +1,69 @@
 import React, { useState, useEffect } from 'react';
-import { useSavings } from '../context/SavingsContext';
+import { useEntries } from '../context/EntriesContext';
 
 export default function SavingsTab() {
-    const { savings, addSaving, fetchSavings } = useSavings();
-    const [month, setMonth] = useState(new Date().getMonth() + 1);
-    const [year, setYear] = useState(new Date().getFullYear());
+    const { filteredEntries, addEntry, deleteEntry, currentMonth, currentYear, fetchEntries } = useEntries();
     const [form, setForm] = useState({ category: '', amount: '' });
+    const [submitting, setSubmitting] = useState(false);
 
     useEffect(() => {
-        fetchSavings(month, year);
-    }, [month, year]);
+        fetchEntries(currentMonth, currentYear);
+    }, [currentMonth, currentYear, fetchEntries]);
+
+    const savings = filteredEntries.filter(e => e.type === 'saving');
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!form.category || !form.amount) return;
-        await addSaving({ category: form.category, amount: Number(form.amount), month, year });
-        setForm({ category: '', amount: '' });
+        if (!form.category.trim() || !form.amount) return;
+
+        try {
+            setSubmitting(true);
+            await addEntry({
+                type: 'saving',
+                note: form.category.trim(),
+                amount: Number(form.amount),
+                created_at: new Date().toISOString()
+            });
+            setForm({ category: '', amount: '' });
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const handleDelete = async (id) => {
+        if (!window.confirm('Delete this saving?')) return;
+        await deleteEntry(id);
     };
 
     return (
         <div>
-            {/* Month Selector */}
-            <input
-                type="month"
-                value={`${year}-${month.toString().padStart(2, '0')}`}
-                onChange={(e) => {
-                    const [y, m] = e.target.value.split('-');
-                    setYear(Number(y));
-                    setMonth(Number(m));
-                }}
-                className="border p-2 rounded mb-4"
-            />
-
-            {/* Add Saving */}
-            <form onSubmit={handleSubmit} className="flex gap-2 mb-4">
+            <form onSubmit={handleSubmit} className="flex gap-2 mb-6">
                 <input
                     type="text"
-                    placeholder="Category (e.g., 401k)"
+                    placeholder="Saving Type (Stocks, 401k, etc.)"
                     value={form.category}
-                    onChange={(e) => setForm({ ...form, category: e.target.value })}
-                    className="border p-2 rounded flex-1"
+                    onChange={e => setForm({ ...form, category: e.target.value })}
+                    className="flex-1 border p-2 rounded"
                 />
                 <input
                     type="number"
                     placeholder="Amount"
                     value={form.amount}
-                    onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                    className="border p-2 rounded w-32"
+                    onChange={e => setForm({ ...form, amount: e.target.value })}
+                    className="w-32 border p-2 rounded"
                 />
-                <button type="submit" className="bg-blue-500 text-white px-4 py-2 rounded">
-                    Add
+                <button type="submit" disabled={submitting} className="bg-green-500 text-white px-4 py-2 rounded">
+                    {submitting ? 'Adding...' : 'Add'}
                 </button>
             </form>
 
-            {/* Savings List */}
-            {savings.length === 0 ? (
-                <p className="text-gray-500 italic">No savings entries this month.</p>
-            ) : (
-                <div className="space-y-2">
-                    {savings.map((s) => (
-                        <div key={s.id} className="flex justify-between p-3 border rounded">
-                            <span>{s.category} — ${s.amount.toFixed(2)}</span>
-                        </div>
-                    ))}
-                </div>
-            )}
-
-            {/* Charts can go here */}
-            <div className="mt-6">
-                <p className="text-gray-400 italic">Charts coming soon...</p>
+            <div className="space-y-3">
+                {savings.map(entry => (
+                    <div key={entry.id} className="flex justify-between items-center p-3 border rounded bg-green-50 border-green-200">
+                        <span>{entry.note} — ${Number(entry.amount).toFixed(2)}</span>
+                        <button onClick={() => handleDelete(entry.id)} className="text-red-600 hover:underline">Delete</button>
+                    </div>
+                ))}
             </div>
         </div>
     );
