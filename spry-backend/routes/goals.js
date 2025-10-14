@@ -3,21 +3,69 @@ const router = express.Router();
 const pool = require('../config/db');
 const auth = require('../middleware/auth');
 
-// Get all goals for the logged-in user
+// 🧩 Helper to recalc a goal before returning
+async function syncGoalProgress(userId, goalId) {
+    // Total from entries
+    const [[{ total }]] = await pool.execute(
+        `SELECT COALESCE(SUM(amount), 0) AS total 
+         FROM entries 
+         WHERE user_id = ? AND goal_id = ?`,
+        [userId, goalId]
+    );
+
+    // Get goal details
+    const [[goal]] = await pool.execute(
+        `SELECT goal_amount, allocated_amount, completed 
+         FROM goals 
+         WHERE id = ? AND user_id = ?`,
+        [goalId, userId]
+    );
+
+    if (!goal) return null;
+
+    const newAllocated = Number(total);
+    const isCompleted = newAllocated >= goal.goal_amount;
+
+    // Only update DB if something changed
+    await pool.execute(
+        `UPDATE goals 
+         SET allocated_amount = ?, 
+             completed = ?, 
+             completed_at = ${isCompleted ? 'NOW()' : 'NULL'}
+         WHERE id = ? AND user_id = ?`,
+        [newAllocated, isCompleted ? 1 : 0, goalId, userId]
+    );
+
+    // Return updated goal row
+    const [rows] = await pool.execute(
+        'SELECT * FROM goals WHERE id = ? AND user_id = ?',
+        [goalId, userId]
+    );
+    return rows[0];
+}
+
+// ✅ Get all goals for the logged-in user
 router.get('/', auth, async (req, res) => {
     try {
+        // Fetch user’s goals
         const [goals] = await pool.execute(
-            'SELECT * FROM goals WHERE user_id = ? ORDER BY created_at DESC',
+            'SELECT id FROM goals WHERE user_id = ? ORDER BY created_at DESC',
             [req.user.id]
         );
-        res.json(goals);
+
+        // Recalculate each goal’s progress in parallel
+        const syncedGoals = await Promise.all(
+            goals.map(g => syncGoalProgress(req.user.id, g.id))
+        );
+
+        res.json(syncedGoals.filter(Boolean)); // remove nulls
     } catch (err) {
         console.error('Error fetching goals:', err);
         res.status(500).json({ error: 'Failed to fetch goals' });
     }
 });
 
-// Create a new goal
+// ✅ Create a new goal
 router.post('/', auth, async (req, res) => {
     const { note, goal_amount } = req.body;
 
@@ -32,7 +80,6 @@ router.post('/', auth, async (req, res) => {
             [req.user.id, note, goal_amount]
         );
 
-        // Return the full created goal (including timestamps)
         const [newGoalRows] = await pool.execute(
             'SELECT * FROM goals WHERE id = ? AND user_id = ?',
             [result.insertId, req.user.id]
@@ -45,7 +92,7 @@ router.post('/', auth, async (req, res) => {
     }
 });
 
-// ✅ Update a goal (allocate funds or mark as completed)
+// ✅ Update a goal
 router.put('/:id', auth, async (req, res) => {
     const goalId = req.params.id;
     const { allocated_amount, completed } = req.body;
@@ -54,7 +101,6 @@ router.put('/:id', auth, async (req, res) => {
         const updates = [];
         const values = [];
 
-        // Ensure allocated_amount is always numeric or defaults to 0
         if (allocated_amount !== undefined) {
             const safeAmount = Number(allocated_amount);
             if (isNaN(safeAmount)) {
@@ -68,18 +114,11 @@ router.put('/:id', auth, async (req, res) => {
             const completedValue = completed ? 1 : 0;
             updates.push('completed = ?');
             values.push(completedValue);
-
-            // Handle timestamp logic safely
-            if (completedValue) {
-                updates.push('completed_at = NOW()');
-            } else {
-                updates.push('completed_at = NULL');
-            }
+            updates.push(`completed_at = ${completedValue ? 'NOW()' : 'NULL'}`);
         }
 
-        if (updates.length === 0) {
+        if (updates.length === 0)
             return res.status(400).json({ error: 'Nothing to update' });
-        }
 
         values.push(req.user.id, goalId);
 
@@ -88,80 +127,14 @@ router.put('/:id', auth, async (req, res) => {
             values
         );
 
-        const [updatedRows] = await pool.execute(
-            'SELECT * FROM goals WHERE id = ? AND user_id = ?',
-            [goalId, req.user.id]
-        );
-
-        res.json(updatedRows[0]);
+        // Always return the fresh recalculated goal
+        const updatedGoal = await syncGoalProgress(req.user.id, goalId);
+        res.json(updatedGoal);
     } catch (err) {
         console.error('Error updating goal:', err);
         res.status(500).json({ error: 'Failed to update goal' });
     }
-});// ✅ Update a goal (allocate funds or mark as completed)
-router.put('/:id', auth, async (req, res) => {
-    const goalId = req.params.id;
-    const { allocated_amount, completed } = req.body;
-
-    console.log("🧠 Incoming update body:", req.body);
-
-    try {
-        const updates = [];
-        const values = [];
-
-        // ✅ Only include allocated_amount if it's actually defined and numeric
-        if (allocated_amount !== undefined && allocated_amount !== null) {
-            const safeAmount = Number(allocated_amount);
-            if (isNaN(safeAmount)) {
-                console.error("🚫 Invalid allocated_amount:", allocated_amount);
-                return res.status(400).json({ error: 'Invalid allocated_amount value' });
-            }
-            updates.push('allocated_amount = ?');
-            values.push(safeAmount);
-        }
-
-        // ✅ Handle completed safely
-        if (completed !== undefined && completed !== null) {
-            const completedValue = completed ? 1 : 0;
-            updates.push('completed = ?');
-            values.push(completedValue);
-
-            if (completedValue) {
-                updates.push('completed_at = NOW()');
-            } else {
-                updates.push('completed_at = NULL');
-            }
-        }
-
-        // ✅ Stop early if no valid updates
-        if (updates.length === 0) {
-            console.warn("⚠️ Nothing to update for goal:", goalId);
-            return res.status(400).json({ error: 'Nothing to update' });
-        }
-
-        values.push(req.user.id, goalId);
-
-        console.log("🧩 Final SQL:", `UPDATE goals SET ${updates.join(', ')} WHERE user_id = ? AND id = ?`);
-        console.log("🧩 Values:", values);
-
-        await pool.execute(
-            `UPDATE goals SET ${updates.join(', ')} WHERE user_id = ? AND id = ?`,
-            values
-        );
-
-        // ✅ Fetch and return updated goal
-        const [updatedRows] = await pool.execute(
-            'SELECT * FROM goals WHERE id = ? AND user_id = ?',
-            [goalId, req.user.id]
-        );
-
-        res.json(updatedRows[0]);
-    } catch (err) {
-        console.error('❌ Error updating goal:', err);
-        res.status(500).json({ error: 'Failed to update goal' });
-    }
 });
-
 
 // ✅ Delete a goal
 router.delete('/:id', auth, async (req, res) => {
