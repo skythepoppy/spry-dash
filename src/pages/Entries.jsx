@@ -1,52 +1,70 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Navbar from '../components/Navbar';
 import { useEntries } from '../context/EntriesContext';
 
 export default function Entries() {
-    const { entries, addEntry, deleteEntry } = useEntries();
+    const { entries, addEntry, deleteEntry, fetchEntries, loading, error } = useEntries();
     const [form, setForm] = useState({ category: '', amount: '', type: 'expense' });
+    const [submitting, setSubmitting] = useState(false);
+
+    // Optional: refresh data on mount or after any submission
+    useEffect(() => {
+        if (entries.length === 0) fetchEntries();
+    }, [fetchEntries]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!form.category || !form.amount) return;
+        if (!form.category.trim() || !form.amount) return;
 
         try {
+            setSubmitting(true);
             await addEntry({
                 type: form.type,
                 amount: Number(form.amount),
-                note: form.category,
+                note: form.category.trim(),
             });
-
             setForm({ category: '', amount: '', type: 'expense' });
         } catch (err) {
-            console.error('Failed to add entry:', err);
+            alert('Failed to add entry. Please try again.');
+            console.error(err);
+        } finally {
+            setSubmitting(false);
         }
     };
 
+    const handleDelete = async (id) => {
+        if (!window.confirm('Delete this entry?')) return;
+        try {
+            await deleteEntry(id);
+        } catch (err) {
+            alert('Failed to delete entry.');
+            console.error(err);
+        }
+    };
 
+    // Categorize entries into time windows
     const categorizeEntries = () => {
         const now = new Date();
-        const currentWeekStart = new Date(now);
-        currentWeekStart.setDate(now.getDate() - now.getDay());
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - now.getDay());
 
-        const lastWeekStart = new Date(currentWeekStart);
-        lastWeekStart.setDate(currentWeekStart.getDate() - 7);
+        const startOfLastWeek = new Date(startOfWeek);
+        startOfLastWeek.setDate(startOfWeek.getDate() - 7);
 
-        const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
         const thisWeek = [];
         const lastWeek = [];
         const lastMonth = [];
 
         entries.forEach((entry) => {
-            // Fallback to current date if created_at is missing
             const entryDate = entry.created_at ? new Date(entry.created_at) : new Date();
-            if (entryDate >= currentWeekStart) {
-                thisWeek.push({ ...entry, amount: Number(entry.amount) });
-            } else if (entryDate >= lastWeekStart && entryDate < currentWeekStart) {
-                lastWeek.push({ ...entry, amount: Number(entry.amount) });
-            } else if (entryDate >= lastMonthStart) {
-                lastMonth.push({ ...entry, amount: Number(entry.amount) });
+            if (entryDate >= startOfWeek) {
+                thisWeek.push(entry);
+            } else if (entryDate >= startOfLastWeek && entryDate < startOfWeek) {
+                lastWeek.push(entry);
+            } else if (entryDate >= startOfLastMonth) {
+                lastMonth.push(entry);
             }
         });
 
@@ -55,15 +73,15 @@ export default function Entries() {
 
     const { thisWeek, lastWeek, lastMonth } = categorizeEntries();
 
-    const handleDelete = (id) => {
-        if (window.confirm('Delete this entry?')) deleteEntry(id);
-    };
-
     return (
         <div className="min-h-screen bg-gray-50">
             <Navbar />
-            <div className="p-8">
+            <div className="p-8 max-w-4xl mx-auto">
                 <h1 className="text-3xl font-bold mb-8 text-gray-800">Entries</h1>
+
+                {/* Error & Loading States */}
+                {loading && <p className="text-gray-500 italic mb-4">Loading entries...</p>}
+                {error && <p className="text-red-500 italic mb-4">{error}</p>}
 
                 {/* Entry Form */}
                 <form
@@ -94,9 +112,12 @@ export default function Entries() {
                     </select>
                     <button
                         type="submit"
-                        className="bg-blue-500 text-white px-5 py-2 rounded hover:bg-blue-600 transition"
+                        disabled={submitting}
+                        className={`bg-blue-500 text-white px-5 py-2 rounded transition ${
+                            submitting ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-600'
+                        }`}
                     >
-                        Add
+                        {submitting ? 'Adding...' : 'Add'}
                     </button>
                 </form>
 
@@ -116,10 +137,11 @@ export default function Entries() {
                                     {data.map((entry) => (
                                         <div
                                             key={entry.id}
-                                            className={`flex justify-between items-center p-4 rounded-xl border ${entry.type === 'expense'
+                                            className={`flex justify-between items-center p-4 rounded-xl border ${
+                                                entry.type === 'expense'
                                                     ? 'bg-red-50 border-red-200'
                                                     : 'bg-green-50 border-green-200'
-                                                }`}
+                                            }`}
                                         >
                                             <div>
                                                 <span className="font-semibold capitalize block">
