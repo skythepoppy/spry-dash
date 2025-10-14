@@ -6,53 +6,51 @@ const auth = require('../middleware/auth');
 // Get all entries for the logged-in user
 router.get('/', auth, async (req, res) => {
     try {
-        // Explicitly select columns to ensure created_at is included
         const [entries] = await pool.execute(
-            'SELECT id, user_id, type, amount, note, created_at FROM entries WHERE user_id = ? ORDER BY created_at DESC',
+            `SELECT id, user_id, type, amount, note, category, goal_id, created_at 
+             FROM entries 
+             WHERE user_id = ? 
+             ORDER BY created_at DESC`,
             [req.user.id]
         );
 
-        // Optional: fill in missing created_at just in case
-        const safeEntries = entries.map(e => ({
-            ...e,
-            created_at: e.created_at ?? new Date()
-        }));
-
-        res.json(safeEntries);
+        res.json(entries);
     } catch (err) {
-        console.error(err);
+        console.error('Error fetching entries:', err);
         res.status(500).json({ error: 'Failed to fetch entries' });
     }
 });
 
 // Create a new entry
 router.post('/', auth, async (req, res) => {
-    const { type, amount, note } = req.body; // no created_at
+    const { type, amount, note, category, goal_id } = req.body;
+
     try {
         const [result] = await pool.execute(
-            `INSERT INTO entries (user_id, type, amount, note) 
-             VALUES (?, ?, ?, ?)`,
-            [req.user.id, type, amount, note || null]
+            `INSERT INTO entries (user_id, type, amount, note, category, goal_id) 
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [req.user.id, type, amount, note || null, category || null, goal_id || null]
         );
 
-        // Fetch the full row including created_at
+        // Return full inserted entry
         const [newEntryRows] = await pool.execute(
-            'SELECT * FROM entries WHERE id = ? AND user_id = ?',
+            `SELECT id, user_id, type, amount, note, category, goal_id, created_at 
+             FROM entries 
+             WHERE id = ? AND user_id = ?`,
             [result.insertId, req.user.id]
         );
 
-        res.status(201).json(newEntryRows[0]); // return full entry
+        res.status(201).json(newEntryRows[0]);
     } catch (err) {
-        console.error(err);
+        console.error('Error creating entry:', err);
         res.status(500).json({ error: 'Failed to create entry' });
     }
 });
 
-
 // Update an entry
 router.put('/:id', auth, async (req, res) => {
     const entryId = req.params.id;
-    const { type, amount, note } = req.body;
+    const { type, amount, note, category, goal_id } = req.body;
 
     try {
         const updates = [];
@@ -61,8 +59,12 @@ router.put('/:id', auth, async (req, res) => {
         if (type !== undefined) { updates.push('type = ?'); values.push(type); }
         if (amount !== undefined) { updates.push('amount = ?'); values.push(amount); }
         if (note !== undefined) { updates.push('note = ?'); values.push(note); }
+        if (category !== undefined) { updates.push('category = ?'); values.push(category); }
+        if (goal_id !== undefined) { updates.push('goal_id = ?'); values.push(goal_id); }
 
-        if (updates.length === 0) return res.status(400).json({ error: 'Nothing to update' });
+        if (updates.length === 0) {
+            return res.status(400).json({ error: 'Nothing to update' });
+        }
 
         values.push(req.user.id, entryId);
 
@@ -71,15 +73,16 @@ router.put('/:id', auth, async (req, res) => {
             values
         );
 
-        // Return the updated entry
         const [updatedEntry] = await pool.execute(
-            'SELECT id, user_id, type, amount, note, created_at FROM entries WHERE user_id = ? AND id = ?',
+            `SELECT id, user_id, type, amount, note, category, goal_id, created_at 
+             FROM entries 
+             WHERE user_id = ? AND id = ?`,
             [req.user.id, entryId]
         );
 
         res.json(updatedEntry[0]);
     } catch (err) {
-        console.error(err);
+        console.error('Error updating entry:', err);
         res.status(500).json({ error: 'Failed to update entry' });
     }
 });
@@ -87,11 +90,15 @@ router.put('/:id', auth, async (req, res) => {
 // Delete an entry
 router.delete('/:id', auth, async (req, res) => {
     const entryId = req.params.id;
+
     try {
-        await pool.execute('DELETE FROM entries WHERE user_id = ? AND id = ?', [req.user.id, entryId]);
-        res.json({ message: 'Entry deleted' });
+        await pool.execute(
+            'DELETE FROM entries WHERE user_id = ? AND id = ?',
+            [req.user.id, entryId]
+        );
+        res.json({ message: 'Entry deleted successfully' });
     } catch (err) {
-        console.error(err);
+        console.error('Error deleting entry:', err);
         res.status(500).json({ error: 'Failed to delete entry' });
     }
 });
