@@ -1,41 +1,40 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState } from 'react';
 import api from '../api/axios';
 
 const BudgetsContext = createContext();
 
 export function BudgetsProvider({ children }) {
     const [budgets, setBudgets] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
     const token = localStorage.getItem('token');
 
-    const authHeaders = () => ({ headers: { Authorization: `Bearer ${token}` } });
+    const authHeaders = () => ({
+        headers: { Authorization: `Bearer ${token}` },
+    });
 
-    const fetchBudgets = async () => {
-        if (!token) return;
-        setLoading(true);
+    const fetchBudgets = async (month, year) => {
+        if (!month || !year) return;
         try {
-            const res = await api.get('/budgets', authHeaders());
-            setBudgets(res.data || []);
+            const res = await api.get(`/budgets?month=${month}&year=${year}`, authHeaders());
+            setBudgets(res.data);
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to fetch budgets.');
-        } finally { setLoading(false); }
+            console.error('Failed to fetch budgets:', err);
+        }
     };
 
-    const addBudget = async (data) => {
-        const res = await api.post('/budgets', data, authHeaders());
-        setBudgets(prev => [res.data, ...prev]);
+    const updateBudget = async (expenseId, updates) => {
+        try {
+            const res = await api.put(`/budgets/${expenseId}`, updates, authHeaders());
+            setBudgets((prev) =>
+                prev.map((b) => (b.expenseId === expenseId ? { ...b, ...updates } : b))
+            );
+            return res.data;
+        } catch (err) {
+            console.error('Failed to update budget:', err);
+        }
     };
-
-    const deleteBudget = async (id) => {
-        await api.delete(`/budgets/${id}`, authHeaders());
-        setBudgets(prev => prev.filter(b => b.id !== id));
-    };
-
-    useEffect(() => { fetchBudgets(); }, [token]);
 
     return (
-        <BudgetsContext.Provider value={{ budgets, addBudget, deleteBudget, fetchBudgets, loading, error }}>
+        <BudgetsContext.Provider value={{ budgets, fetchBudgets, updateBudget }}>
             {children}
         </BudgetsContext.Provider>
     );

@@ -1,34 +1,66 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useBudgets } from '../context/BudgetsContext';
+import { useExpenses } from '../context/ExpensesContext';
 
 export default function BudgetingTab() {
-    const { budgets, addBudget, deleteBudget, loading, error } = useBudgets();
-    const [form, setForm] = useState({ category: '', amount: '' });
+    const { expenses, fetchExpenses } = useExpenses();
+    const { budgets, updateBudget, fetchBudgets } = useBudgets();
+    const [month, setMonth] = useState(new Date().getMonth() + 1);
+    const [year, setYear] = useState(new Date().getFullYear());
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        if (!form.category || !form.amount) return;
-        try { await addBudget({ category: form.category, amount: Number(form.amount) }); setForm({ category: '', amount: '' }); }
-        catch (err) { console.error(err); }
+    useEffect(() => {
+        fetchExpenses(month, year);
+        fetchBudgets(month, year);
+    }, [month, year]);
+
+    const handleAllocation = async (expenseId, value) => {
+        await updateBudget(expenseId, { allocated: Number(value), month, year });
     };
 
     return (
-        <div className="space-y-4">
-            {loading && <p>Loading...</p>}
-            {error && <p className="text-red-500">{error}</p>}
+        <div>
+            {/* Month Selector */}
+            <input
+                type="month"
+                value={`${year}-${month.toString().padStart(2, '0')}`}
+                onChange={(e) => {
+                    const [y, m] = e.target.value.split('-');
+                    setYear(Number(y));
+                    setMonth(Number(m));
+                }}
+                className="border p-2 rounded mb-4"
+            />
 
-            <form onSubmit={handleSubmit} className="flex gap-4 mb-4">
-                <input type="text" placeholder="Category" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} className="border p-2 rounded flex-1"/>
-                <input type="number" placeholder="Amount" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border p-2 rounded w-32"/>
-                <button type="submit" className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Add</button>
-            </form>
-
-            {budgets.map(b => (
-                <div key={b.id} className="flex justify-between p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
-                    <span>{b.category} — ${b.amount.toFixed(2)}</span>
-                    <button onClick={() => deleteBudget(b.id)} className="text-red-600 hover:underline">Delete</button>
+            {/* Budget Allocation */}
+            {expenses.length === 0 ? (
+                <p className="text-gray-500 italic">No expenses to budget this month.</p>
+            ) : (
+                <div className="space-y-3">
+                    {expenses.map((e) => {
+                        const budget = budgets.find((b) => b.expenseId === e.id) || { allocated: 0 };
+                        const progress = Math.min((budget.allocated / e.amount) * 100, 100);
+                        return (
+                            <div key={e.id} className="space-y-1">
+                                <div className="flex justify-between items-center">
+                                    <span>{e.category} — ${e.amount.toFixed(2)}</span>
+                                    <input
+                                        type="number"
+                                        value={budget.allocated}
+                                        onChange={(ev) => handleAllocation(e.id, ev.target.value)}
+                                        className="border p-1 w-24 rounded"
+                                    />
+                                </div>
+                                <div className="h-3 bg-gray-200 rounded-full">
+                                    <div
+                                        className="h-3 bg-green-500 rounded-full"
+                                        style={{ width: `${progress}%` }}
+                                    />
+                                </div>
+                            </div>
+                        );
+                    })}
                 </div>
-            ))}
+            )}
         </div>
     );
 }
