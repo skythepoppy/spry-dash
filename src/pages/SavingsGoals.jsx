@@ -1,83 +1,36 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import Navbar from '../components/Navbar';
 import { useSavingsGoals } from '../context/SavingsGoalsContext';
 import { useEntries } from '../context/EntriesContext';
 
 export default function SavingsGoals() {
-    const {
-        activeGoals,
-        completedGoals,
-        addGoal,
-        deleteGoal,
-        allocateToGoal,
-        fetchGoals,
-    } = useSavingsGoals();
-
+    const { activeGoals, completedGoals } = useSavingsGoals();
     const { entries } = useEntries();
-    const [newGoal, setNewGoal] = useState({ note: '', goal_amount: '' });
-    const [editingGoalId, setEditingGoalId] = useState(null);
-    const [allocate, setAllocate] = useState({});
 
+    // Only include savings entries meant for goals
     const totalSavings = useMemo(
         () =>
             entries
-                .filter(e => e.type === 'saving')
+                .filter(e => e.type === 'saving' && e.note.toLowerCase().includes('goal'))
                 .reduce((sum, e) => sum + Number(e.amount), 0),
         [entries]
     );
-
-    const totalAllocated = useMemo(
-        () => [...activeGoals, ...completedGoals].reduce((sum, g) => sum + Number(g.allocated_amount || 0), 0),
-        [activeGoals, completedGoals]
-    );
-
-
-    // Available savings for allocations
-    const availableSavings = Math.max(totalSavings - totalAllocated, 0);
-
-    const handleAddGoal = e => {
-        e.preventDefault();
-        if (!newGoal.note || !newGoal.goal_amount) return;
-        addGoal({ note: newGoal.note, goal_amount: Number(newGoal.goal_amount) });
-        setNewGoal({ note: '', goal_amount: '' });
-    };
 
     return (
         <div className="min-h-screen bg-gray-50">
             <Navbar />
             <div className="p-8">
-                <h1 className="text-3xl font-bold mb-6 text-gray-800">Savings Goals</h1>
+                <h1 className="text-3xl font-bold mb-2 text-gray-800 text-center">Savings Goals</h1>
 
-                <p className="mb-4 text-lg font-medium">
-                    Total Savings Available: ${availableSavings.toFixed(2)}
+                {/* Completed goals count */}
+                <p className="mb-4 text-lg font-medium text-center">
+                    Completed Goals: {completedGoals.length}
                 </p>
 
-                {/* Add Goal Form */}
-                <form
-                    onSubmit={handleAddGoal}
-                    className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mb-8 flex flex-col sm:flex-row items-center gap-4"
-                >
-                    <input
-                        type="text"
-                        placeholder="Goal Name"
-                        value={newGoal.note}
-                        onChange={e => setNewGoal({ ...newGoal, note: e.target.value })}
-                        className="flex-1 border p-2 rounded focus:ring-2 focus:ring-blue-400 outline-none"
-                    />
-                    <input
-                        type="number"
-                        placeholder="Goal Amount"
-                        value={newGoal.goal_amount}
-                        onChange={e => setNewGoal({ ...newGoal, goal_amount: e.target.value })}
-                        className="w-32 border p-2 rounded focus:ring-2 focus:ring-blue-400 outline-none"
-                    />
-                    <button
-                        type="submit"
-                        className="bg-blue-500 text-white px-5 py-2 rounded hover:bg-blue-600 transition"
-                    >
-                        Add Goal
-                    </button>
-                </form>
+                {/* Total savings for goals */}
+                <p className="mb-6 text-lg font-medium text-center">
+                    Total Savings Allocated to Goals: ${totalSavings.toFixed(2)}
+                </p>
 
                 {/* Active Goals */}
                 <h2 className="text-2xl font-semibold mb-3">Active Goals</h2>
@@ -98,24 +51,13 @@ export default function SavingsGoals() {
                             return (
                                 <div
                                     key={goal.id}
-                                    className={`bg-white p-4 rounded-xl shadow-sm border border-gray-200 transition-all duration-300 ${editingGoalId === goal.id ? 'pb-6' : 'pb-4'
-                                        }`}
+                                    className="bg-white p-4 rounded-xl shadow-sm border border-gray-200"
                                 >
-                                    <div className="flex justify-between items-center mb-2">
-                                        <span className="font-semibold">{goal.note}</span>
-                                        <button
-                                            onClick={() =>
-                                                setEditingGoalId(editingGoalId === goal.id ? null : goal.id)
-                                            }
-                                            className="text-blue-500 text-sm hover:underline"
-                                        >
-                                            {editingGoalId === goal.id ? 'Close' : 'Edit'}
-                                        </button>
-                                    </div>
+                                    <span className="font-semibold">{goal.note}</span>
 
-                                    <div className="h-6 w-full bg-gray-200 rounded-full overflow-hidden relative">
+                                    <div className="h-6 w-full bg-gray-200 rounded-full overflow-hidden relative mt-2">
                                         <div
-                                            className={`h-full ${progressColor} flex items-center justify-center text-white text-sm font-semibold transition-all duration-700`}
+                                            className={`h-full ${progressColor} flex items-center justify-center text-white text-sm font-semibold`}
                                             style={{ width: `${progress}%` }}
                                         >
                                             {progress.toFixed(0)}%
@@ -126,49 +68,6 @@ export default function SavingsGoals() {
                                         ${allocated.toFixed(2)} / ${goal.goal_amount} —{' '}
                                         {(goal.goal_amount - allocated).toFixed(2)} remaining
                                     </p>
-
-                                    {editingGoalId === goal.id && (
-                                        <div className="mt-4 flex flex-col sm:flex-row gap-3 items-center">
-                                            {/* Allocate */}
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                placeholder={`Max: $${availableSavings.toFixed(2)}`}
-                                                value={allocate[goal.id] ?? ''}
-                                                onChange={e =>
-                                                    setAllocate({ ...allocate, [goal.id]: e.target.value })
-                                                }
-                                                className="w-28 border p-2 rounded focus:ring-2 focus:ring-green-400 outline-none"
-                                            />
-                                            <button
-                                                onClick={async () => {
-                                                    const amount = Number(allocate[goal.id]);
-                                                    if (amount <= 0) return;
-                                                    if (amount > availableSavings) {
-                                                        alert('Not enough savings available!');
-                                                        return;
-                                                    }
-
-                                                    await allocateToGoal(goal.id, amount);
-                                                    await fetchGoals(); // Ensure updated totals
-                                                    setAllocate({ ...allocate, [goal.id]: '' });
-                                                }}
-                                                className="bg-green-500 text-white px-4 py-1 rounded hover:bg-green-600 transition"
-                                            >
-                                                Allocate
-                                            </button>
-
-                                            {/* Delete */}
-                                            <button
-                                                onClick={() => {
-                                                    if (window.confirm('Delete this goal?')) deleteGoal(goal.id);
-                                                }}
-                                                className="text-red-500 text-sm hover:underline"
-                                            >
-                                                Delete
-                                            </button>
-                                        </div>
-                                    )}
                                 </div>
                             );
                         })
