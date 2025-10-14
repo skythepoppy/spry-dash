@@ -23,20 +23,21 @@ export function EntriesProvider({ children }) {
         headers: { Authorization: `Bearer ${token}` },
     }), [token]);
 
-    const fetchEntries = useCallback(async () => {
-        if (!token) return;
-        setLoading(true);
-        setError(null);
-        try {
-            const res = await api.get('/entries', authHeaders());
-            setEntries(res.data || []);
-        } catch (err) {
-            console.error('Failed to fetch entries:', err.response?.data || err.message);
-            setError('Failed to load entries.');
-        } finally {
-            setLoading(false);
-        }
-    }, [token, authHeaders]);
+    const fetchEntries = useCallback(async (month = currentMonth, year = currentYear) => {
+    if (!token) return;
+    setLoading(true);
+    setError(null);
+    try {
+        const res = await api.get(`/entries?month=${month}&year=${year}`, authHeaders());
+        setEntries(res.data || []);
+    } catch (err) {
+        console.error('Failed to fetch entries:', err.response?.data || err.message);
+        setError('Failed to load entries.');
+    } finally {
+        setLoading(false);
+    }
+}, [token, authHeaders, currentMonth, currentYear]);
+
 
     useEffect(() => {
         fetchEntries();
@@ -65,7 +66,7 @@ export function EntriesProvider({ children }) {
         } catch (err) {
             console.error('Failed to update entry:', err.response?.data || err.message);
             throw err;
-        }
+                }
     };
 
     const deleteEntry = async (id) => {

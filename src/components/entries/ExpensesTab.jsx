@@ -2,14 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useEntries } from '../context/EntriesContext';
 
 export default function ExpensesTab() {
-    const { filteredEntries, addEntry, deleteEntry, currentMonth, setCurrentMonth, currentYear, setCurrentYear, fetchEntries } = useEntries();
+    const { filteredEntries, addEntry, deleteEntry, fetchEntries, currentMonth, currentYear } = useEntries();
     const [form, setForm] = useState({ category: '', amount: '' });
     const [submitting, setSubmitting] = useState(false);
 
-    // Fetch entries when month or year changes
     useEffect(() => {
-        fetchEntries(currentMonth, currentYear);
-    }, [currentMonth, currentYear, fetchEntries]);
+        fetchEntries();
+    }, [fetchEntries, currentMonth, currentYear]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -21,7 +20,9 @@ export default function ExpensesTab() {
                 type: 'expense',
                 note: form.category.trim(),
                 amount: Number(form.amount),
-                created_at: new Date().toISOString()
+                created_at: new Date().toISOString(),
+                month: currentMonth,
+                year: currentYear,
             });
             setForm({ category: '', amount: '' });
         } finally {
@@ -36,20 +37,6 @@ export default function ExpensesTab() {
 
     return (
         <div>
-            <div className="flex gap-4 mb-4">
-                <select value={currentMonth} onChange={e => setCurrentMonth(Number(e.target.value))}>
-                    {[...Array(12)].map((_, i) => (
-                        <option key={i+1} value={i+1}>{i+1}</option>
-                    ))}
-                </select>
-                <input
-                    type="number"
-                    value={currentYear}
-                    onChange={e => setCurrentYear(Number(e.target.value))}
-                    className="w-24 border p-1 rounded"
-                />
-            </div>
-
             <form onSubmit={handleSubmit} className="flex gap-2 mb-6">
                 <input
                     type="text"
@@ -71,12 +58,17 @@ export default function ExpensesTab() {
             </form>
 
             <div className="space-y-3">
-                {filteredEntries.filter(e => e.type === 'expense').map(entry => (
-                    <div key={entry.id} className="flex justify-between items-center p-3 border rounded bg-red-50 border-red-200">
-                        <span>{entry.note} — ${Number(entry.amount).toFixed(2)}</span>
-                        <button onClick={() => handleDelete(entry.id)} className="text-red-600 hover:underline">Delete</button>
-                    </div>
-                ))}
+                {filteredEntries
+                    .filter(e => e.type === 'expense')
+                    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+                    .map(entry => (
+                        <div key={entry.id} className="flex justify-between items-center p-3 border rounded bg-red-50 border-red-200">
+                            <span>{entry.note} — ${Number(entry.amount).toFixed(2)}</span>
+                            <button onClick={() => handleDelete(entry.id)} className="text-red-600 hover:underline">
+                                Delete
+                            </button>
+                        </div>
+                    ))}
             </div>
         </div>
     );

@@ -2,15 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { useEntries } from '../context/EntriesContext';
 
 export default function SavingsTab() {
-    const { filteredEntries, addEntry, deleteEntry, currentMonth, currentYear, fetchEntries } = useEntries();
+    const { filteredEntries, addEntry, deleteEntry, fetchEntries, currentMonth, currentYear } = useEntries();
     const [form, setForm] = useState({ category: '', amount: '' });
     const [submitting, setSubmitting] = useState(false);
 
     useEffect(() => {
-        fetchEntries(currentMonth, currentYear);
-    }, [currentMonth, currentYear, fetchEntries]);
+        fetchEntries();
+    }, [fetchEntries, currentMonth, currentYear]);
 
     const savings = filteredEntries.filter(e => e.type === 'saving');
+
+    // Sort savings by newest first
+    const savingsSorted = [...savings].sort(
+        (a, b) => new Date(b.created_at) - new Date(a.created_at)
+    );
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -22,7 +27,9 @@ export default function SavingsTab() {
                 type: 'saving',
                 note: form.category.trim(),
                 amount: Number(form.amount),
-                created_at: new Date().toISOString()
+                created_at: new Date().toISOString(),
+                month: currentMonth,
+                year: currentYear,
             });
             setForm({ category: '', amount: '' });
         } finally {
@@ -58,10 +65,12 @@ export default function SavingsTab() {
             </form>
 
             <div className="space-y-3">
-                {savings.map(entry => (
+                {savingsSorted.map(entry => (
                     <div key={entry.id} className="flex justify-between items-center p-3 border rounded bg-green-50 border-green-200">
                         <span>{entry.note} — ${Number(entry.amount).toFixed(2)}</span>
-                        <button onClick={() => handleDelete(entry.id)} className="text-red-600 hover:underline">Delete</button>
+                        <button onClick={() => handleDelete(entry.id)} className="text-red-600 hover:underline">
+                            Delete
+                        </button>
                     </div>
                 ))}
             </div>
