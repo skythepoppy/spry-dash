@@ -3,7 +3,7 @@ const router = express.Router();
 const pool = require('../config/db');
 const auth = require('../middleware/auth');
 
-// 🧩 Helper to recalc a goal before returning
+// Helper to recalc a goal before returning
 async function syncGoalProgress(userId, goalId) {
     // Total from entries
     const [[{ total }]] = await pool.execute(
@@ -44,7 +44,7 @@ async function syncGoalProgress(userId, goalId) {
     return rows[0];
 }
 
-// ✅ Get all goals for the logged-in user
+// Get all goals for the logged-in user
 router.get('/', auth, async (req, res) => {
     try {
         // Fetch user’s goals
@@ -58,14 +58,14 @@ router.get('/', auth, async (req, res) => {
             goals.map(g => syncGoalProgress(req.user.id, g.id))
         );
 
-        res.json(syncedGoals.filter(Boolean)); // remove nulls
+        res.json(syncedGoals.filter(Boolean));
     } catch (err) {
         console.error('Error fetching goals:', err);
         res.status(500).json({ error: 'Failed to fetch goals' });
     }
 });
 
-// ✅ Create a new goal
+// Create a new goal
 router.post('/', auth, async (req, res) => {
     const { note, goal_amount } = req.body;
 
@@ -92,7 +92,7 @@ router.post('/', auth, async (req, res) => {
     }
 });
 
-// ✅ Update a goal
+// Update a goal
 router.put('/:id', auth, async (req, res) => {
     const goalId = req.params.id;
     const { allocated_amount, completed } = req.body;
@@ -136,7 +136,7 @@ router.put('/:id', auth, async (req, res) => {
     }
 });
 
-// ✅ Delete a goal
+// Delete a goal
 router.delete('/:id', auth, async (req, res) => {
     const goalId = req.params.id;
 

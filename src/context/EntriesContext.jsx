@@ -6,6 +6,7 @@ const EntriesContext = createContext();
 
 export function EntriesProvider({ children }) {
     const [entries, setEntries] = useState([]);
+    const [budgetAllocations, setBudgetAllocations] = useState({});
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [token, setToken] = useState(localStorage.getItem('token'));

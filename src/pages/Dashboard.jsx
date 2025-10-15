@@ -27,15 +27,15 @@ export default function Dashboard() {
         .filter(e => e.type === 'saving')
         .reduce((sum, e) => sum + Number(e.amount || 0), 0);
 
-    // ✅ Never let displayed savings go below 0
+    // Never let displayed savings go below 0
     const availableSavings = Math.max(totalSavingsRaw - totalAllocatedToGoals, 0);
 
-    // ⚖️ Allow wallet balance to go negative (represents overspending or over-allocation)
+    // Allow wallet balance to go negative (represents overspending or over-allocation)
     const walletBalance = (totalSavingsRaw - totalAllocatedToGoals) - totalExpenses;
 
     const achievedGoals = goals.filter(g => g.completed).length;
 
-    // 🎨 Dynamic color based on wallet balance
+    // Dynamic color based on wallet balance
     const walletColor =
         walletBalance < 0 ? 'bg-red-100 text-red-700 border border-red-300' : 'bg-purple-50';
 
