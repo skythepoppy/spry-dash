@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import Navbar from '../components/Navbar';
 import { useSavingsGoals } from '../context/SavingsGoalsContext';
 import { useEntries } from '../context/EntriesContext';
@@ -15,6 +15,13 @@ export default function SavingsGoals() {
                 .reduce((sum, e) => sum + Number(e.amount), 0),
         [entries]
     );
+
+    // Track which goal's contributions are expanded
+    const [expandedGoals, setExpandedGoals] = useState({});
+
+    const toggleGoal = (goalId) => {
+        setExpandedGoals(prev => ({ ...prev, [goalId]: !prev[goalId] }));
+    };
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -51,12 +58,27 @@ export default function SavingsGoals() {
                             if (progress >= 75) progressColor = 'bg-green-500';
                             else if (progress >= 25) progressColor = 'bg-yellow-400';
 
+                            // Get contributions for this goal
+                            const contributions = entries.filter(
+                                e => e.type === 'saving' && e.category === 'savingsgoal' && e.goal_id === goal.id
+                            );
+
                             return (
                                 <div
                                     key={goal.id}
                                     className="bg-white p-4 rounded-xl shadow-sm border border-gray-200"
                                 >
-                                    <span className="font-semibold">{goal.note}</span>
+                                    <div className="flex justify-between items-center">
+                                        <span className="font-semibold">{goal.note}</span>
+                                        {contributions.length > 0 && (
+                                            <button
+                                                onClick={() => toggleGoal(goal.id)}
+                                                className="text-sm text-blue-600 hover:underline"
+                                            >
+                                                {expandedGoals[goal.id] ? 'Hide' : 'Show'} Contributions
+                                            </button>
+                                        )}
+                                    </div>
 
                                     <div className="h-6 w-full bg-gray-200 rounded-full overflow-hidden relative mt-2">
                                         <div
@@ -70,6 +92,17 @@ export default function SavingsGoals() {
                                     <p className="text-sm text-gray-500 mt-1">
                                         ${allocated.toFixed(2)} / ${goal.goal_amount} — ${remaining.toFixed(2)} remaining
                                     </p>
+
+                                    {/* Contributions list */}
+                                    {expandedGoals[goal.id] && contributions.length > 0 && (
+                                        <ul className="mt-2 border-t border-gray-200 pt-2 space-y-1 text-sm text-gray-600">
+                                            {contributions.map(c => (
+                                                <li key={c.id}>
+                                                    ${Number(c.amount).toFixed(2)} — {c.note || 'No description'} ({new Date(c.created_at).toLocaleDateString()})
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
                                 </div>
                             );
                         })
@@ -82,25 +115,42 @@ export default function SavingsGoals() {
                     {completedGoals.length === 0 ? (
                         <p className="text-gray-500 italic">No completed goals yet.</p>
                     ) : (
-                        completedGoals.map(goal => (
-                            <div
-                                key={goal.id}
-                                className="bg-white p-4 rounded-xl shadow-sm border border-gray-200"
-                            >
-                                <div className="flex justify-between items-center mb-2">
-                                    <span className="font-semibold">{goal.note}</span>
-                                    <span className="text-green-600 font-bold">Completed</span>
-                                </div>
-                                {goal.completed_at && (
-                                    <p className="text-sm text-gray-500">
-                                        Completed at: {new Date(goal.completed_at).toLocaleString()}
+                        completedGoals.map(goal => {
+                            const allocated = Number(goal.allocated_amount || 0);
+                            const contributions = entries.filter(
+                                e => e.type === 'saving' && e.category === 'savingsgoal' && e.goal_id === goal.id
+                            );
+
+                            return (
+                                <div
+                                    key={goal.id}
+                                    className="bg-white p-4 rounded-xl shadow-sm border border-gray-200"
+                                >
+                                    <div className="flex justify-between items-center mb-2">
+                                        <span className="font-semibold">{goal.note}</span>
+                                        <span className="text-green-600 font-bold">Completed</span>
+                                    </div>
+                                    {goal.completed_at && (
+                                        <p className="text-sm text-gray-500">
+                                            Completed at: {new Date(goal.completed_at).toLocaleString()}
+                                        </p>
+                                    )}
+                                    <p className="text-sm text-gray-500 mt-1">
+                                        ${allocated.toFixed(2)} / ${goal.goal_amount}
                                     </p>
-                                )}
-                                <p className="text-sm text-gray-500 mt-1">
-                                    ${Number(goal.allocated_amount || 0).toFixed(2)} / ${goal.goal_amount}
-                                </p>
-                            </div>
-                        ))
+
+                                    {contributions.length > 0 && (
+                                        <ul className="mt-2 border-t border-gray-200 pt-2 space-y-1 text-sm text-gray-600">
+                                            {contributions.map(c => (
+                                                <li key={c.id}>
+                                                    ${Number(c.amount).toFixed(2)} — {c.note || 'No description'} ({new Date(c.created_at).toLocaleDateString()})
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
+                            );
+                        })
                     )}
                 </div>
             </div>

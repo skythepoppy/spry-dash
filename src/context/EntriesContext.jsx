@@ -1,20 +1,35 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import api from '../api/axios';
-import { useSavingsGoals } from './SavingsGoalsContext'; // Import context to refresh goals
+import { useSavingsGoals } from './SavingsGoalsContext';
 
 const EntriesContext = createContext();
 
 export function EntriesProvider({ children }) {
     const [entries, setEntries] = useState([]);
-    const [budgetAllocations, setBudgetAllocations] = useState({});
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [token, setToken] = useState(localStorage.getItem('token'));
 
     const [currentMonth, setCurrentMonth] = useState(new Date().getMonth() + 1);
     const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+    const [budgetAllocations, setBudgetAllocations] = useState({});
 
-    const { refreshGoals } = useSavingsGoals(); // To refresh goals when savingsgoal changes
+    // Track leftover funds that weren't allocated to a savings goal
+    const [availableSavings, setAvailableSavings] = useState(() => {
+        return Number(localStorage.getItem('availableSavings') || 0);
+    });
+
+    const { refreshGoals } = useSavingsGoals();
+
+    // Sync leftover funds to localStorage whenever it changes
+    useEffect(() => {
+        localStorage.setItem('availableSavings', availableSavings);
+    }, [availableSavings]);
+
+    // Optional: Reset leftover funds when month/year changes
+    useEffect(() => {
+        setAvailableSavings(0);
+    }, [currentMonth, currentYear]);
 
     // Sync token if it changes elsewhere
     useEffect(() => {
@@ -26,6 +41,10 @@ export function EntriesProvider({ children }) {
     const authHeaders = useCallback(() => ({
         headers: { Authorization: `Bearer ${token}` },
     }), [token]);
+
+    const updateBudgetAllocations = (allocs) => {
+        setBudgetAllocations(allocs);
+    };
 
     const fetchEntries = useCallback(async (month = currentMonth, year = currentYear) => {
         if (!token) return;
@@ -52,7 +71,6 @@ export function EntriesProvider({ children }) {
     const addEntry = async (entryData) => {
         const { type, category } = entryData;
 
-        // Validate category
         if (type === 'expense' && !expenseCategories.includes(category)) {
             throw new Error(`Invalid expense category: ${category}`);
         }
@@ -65,7 +83,6 @@ export function EntriesProvider({ children }) {
             const newEntry = res.data;
             setEntries(prev => [newEntry, ...prev]);
 
-            // If it's a savingsgoal entry, refresh goals
             if (newEntry.type === 'saving' && newEntry.category?.toLowerCase() === 'savingsgoal') {
                 refreshGoals();
             }
@@ -81,11 +98,8 @@ export function EntriesProvider({ children }) {
         try {
             const res = await api.put(`/entries/${id}`, updates, authHeaders());
             const updated = res.data;
-            setEntries(prev =>
-                prev.map(e => (e.id === id ? updated : e))
-            );
+            setEntries(prev => prev.map(e => (e.id === id ? updated : e)));
 
-            // Refresh goals if savingsgoal
             if (updated.type === 'saving' && updated.category?.toLowerCase() === 'savingsgoal') {
                 refreshGoals();
             }
@@ -100,11 +114,9 @@ export function EntriesProvider({ children }) {
     const deleteEntry = async (id) => {
         try {
             const entryToDelete = entries.find(e => e.id === id);
-
             await api.delete(`/entries/${id}`, authHeaders());
             setEntries(prev => prev.filter(e => e.id !== id));
 
-            // Refresh goals if savingsgoal
             if (entryToDelete?.type === 'saving' && entryToDelete.category?.toLowerCase() === 'savingsgoal') {
                 refreshGoals();
             }
@@ -114,7 +126,6 @@ export function EntriesProvider({ children }) {
         }
     };
 
-    // Filter entries by current month/year
     const filteredEntries = useMemo(() => {
         return entries.filter(e => {
             const date = e.created_at ? new Date(e.created_at) : new Date();
@@ -136,7 +147,11 @@ export function EntriesProvider({ children }) {
                 currentMonth,
                 currentYear,
                 setCurrentMonth,
-                setCurrentYear
+                setCurrentYear,
+                budgetAllocations,
+                updateBudgetAllocations,
+                availableSavings,
+                setAvailableSavings, 
             }}
         >
             {children}

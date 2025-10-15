@@ -37,7 +37,7 @@ async function updateGoalProgress(userId, goalId) {
 router.get('/', auth, async (req, res) => {
     try {
         const [entries] = await pool.execute(
-            `SELECT id, user_id, type, amount, note, category, goal_id, created_at 
+            `SELECT id, user_id, type, amount, note, title, category, goal_id, created_at 
              FROM entries WHERE user_id = ? ORDER BY created_at DESC`,
             [req.user.id]
         );
@@ -50,11 +50,11 @@ router.get('/', auth, async (req, res) => {
 
 // --- POST a new entry ---
 router.post('/', auth, async (req, res) => {
-    let { type, amount, note, category, goal_id } = req.body;
+    let { type, amount, note, title, category, goal_id } = req.body;
     const normalizedCategory = category?.toLowerCase() || null;
 
     try {
-        // Validate category strictly
+        // Validate category
         if (type === 'expense' && !expenseCategories.includes(normalizedCategory)) {
             return res.status(400).json({ error: `Invalid expense category: ${category}` });
         }
@@ -63,25 +63,25 @@ router.post('/', auth, async (req, res) => {
         }
 
         const [result] = await pool.execute(
-            `INSERT INTO entries (user_id, type, amount, note, category, goal_id) VALUES (?, ?, ?, ?, ?, ?)`,
-            [req.user.id, type, amount, note || null, normalizedCategory, goal_id || null]
+            `INSERT INTO entries (user_id, type, amount, note, title, category, goal_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [req.user.id, type, amount, note || normalizedCategory, title || null, normalizedCategory, goal_id || null]
         );
 
-        let finalGoalId = goal_id;
         const entryId = result.insertId;
+        let finalGoalId = goal_id;
         const now = new Date();
         const month = now.getMonth() + 1;
         const year = now.getFullYear();
 
-        // Handle expenses
+        // Expenses table
         if (type === 'expense') {
             await pool.execute(
-                `INSERT INTO expense (entry_id, type, month, year, amount) VALUES (?, ?, ?, ?, ?)`,
-                [entryId, normalizedCategory, month, year, amount]
+                `INSERT INTO expense (entry_id, type, title, month, year, amount) VALUES (?, ?, ?, ?, ?, ?)`,
+                [entryId, normalizedCategory, title || null, month, year, amount]
             );
         }
 
-        // Handle savings
+        // Savings table
         if (type === 'saving') {
             if (normalizedCategory === 'savingsgoal') {
                 if (!finalGoalId) {
@@ -95,14 +95,15 @@ router.post('/', auth, async (req, res) => {
                 await updateGoalProgress(req.user.id, finalGoalId);
             } else {
                 await pool.execute(
-                    `INSERT INTO saving (entry_id, type, amount, month, year) VALUES (?, ?, ?, ?, ?)`,
-                    [entryId, normalizedCategory, amount, month, year]
+                    `INSERT INTO saving (entry_id, type, title, amount, month, year) VALUES (?, ?, ?, ?, ?, ?)`,
+                    [entryId, normalizedCategory, title || null, amount, month, year]
                 );
             }
         }
 
         const [newEntryRows] = await pool.execute(
-            `SELECT id, user_id, type, amount, note, category, goal_id, created_at FROM entries WHERE id = ? AND user_id = ?`,
+            `SELECT id, user_id, type, amount, note, title, category, goal_id, created_at 
+             FROM entries WHERE id = ? AND user_id = ?`,
             [entryId, req.user.id]
         );
 
@@ -116,7 +117,7 @@ router.post('/', auth, async (req, res) => {
 // --- PUT: Update an entry ---
 router.put('/:id', auth, async (req, res) => {
     const entryId = req.params.id;
-    let { type, amount, note, category, goal_id } = req.body;
+    let { type, amount, note, title, category, goal_id } = req.body;
     const normalizedCategory = category?.toLowerCase() || null;
 
     try {
@@ -128,7 +129,7 @@ router.put('/:id', auth, async (req, res) => {
 
         const newType = type || oldEntry.type;
 
-        // Validate category strictly
+        // Validate category
         if (newType === 'expense' && normalizedCategory && !expenseCategories.includes(normalizedCategory)) {
             return res.status(400).json({ error: `Invalid expense category: ${category}` });
         }
@@ -139,11 +140,12 @@ router.put('/:id', auth, async (req, res) => {
         const updates = [];
         const values = [];
 
-        if (type !== undefined) updates.push('type = ?') && values.push(type);
-        if (amount !== undefined) updates.push('amount = ?') && values.push(amount);
-        if (note !== undefined) updates.push('note = ?') && values.push(note);
-        if (category !== undefined) updates.push('category = ?') && values.push(normalizedCategory);
-        if (goal_id !== undefined) updates.push('goal_id = ?') && values.push(goal_id);
+        if (type !== undefined) { updates.push('type = ?'); values.push(type); }
+        if (amount !== undefined) { updates.push('amount = ?'); values.push(amount); }
+        if (note !== undefined) { updates.push('note = ?'); values.push(note); }
+        if (title !== undefined) { updates.push('title = ?'); values.push(title); }
+        if (category !== undefined) { updates.push('category = ?'); values.push(normalizedCategory); }
+        if (goal_id !== undefined) { updates.push('goal_id = ?'); values.push(goal_id); }
 
         if (!updates.length) return res.status(400).json({ error: 'Nothing to update' });
 
@@ -154,24 +156,23 @@ router.put('/:id', auth, async (req, res) => {
         const month = now.getMonth() + 1;
         const year = now.getFullYear();
 
-        // Remove old record from saving/expense
-        if (oldEntry.type === 'expense' && oldEntry.category && expenseCategories.includes(oldEntry.category)) {
+        // Remove old records from expense/saving
+        if (oldEntry.type === 'expense') {
             await pool.execute(`DELETE FROM expense WHERE entry_id = ?`, [entryId]);
         }
-        if (oldEntry.type === 'saving' && oldEntry.category && oldEntry.category !== 'savingsgoal') {
+        if (oldEntry.type === 'saving' && oldEntry.category !== 'savingsgoal') {
             await pool.execute(`DELETE FROM saving WHERE entry_id = ?`, [entryId]);
         }
 
-        // Insert new record into correct table
         const newCategory = normalizedCategory || oldEntry.category;
         const newGoalId = goal_id || oldEntry.goal_id;
 
-        if (newType === 'expense' && expenseCategories.includes(newCategory)) {
+        if (newType === 'expense') {
             await pool.execute(
-                `INSERT INTO expense (entry_id, type, month, year, amount) VALUES (?, ?, ?, ?, ?)`,
-                [entryId, newCategory, month, year, amount || oldEntry.amount]
+                `INSERT INTO expense (entry_id, type, title, month, year, amount) VALUES (?, ?, ?, ?, ?, ?)`,
+                [entryId, newCategory, title || null, month, year, amount || oldEntry.amount]
             );
-        } else if (newType === 'saving' && savingCategories.includes(newCategory)) {
+        } else if (newType === 'saving') {
             if (newCategory === 'savingsgoal') {
                 let finalGoalId = newGoalId;
                 if (!finalGoalId) {
@@ -185,8 +186,8 @@ router.put('/:id', auth, async (req, res) => {
                 await updateGoalProgress(req.user.id, finalGoalId);
             } else {
                 await pool.execute(
-                    `INSERT INTO saving (entry_id, type, amount, month, year) VALUES (?, ?, ?, ?, ?)`,
-                    [entryId, newCategory, amount || oldEntry.amount, month, year]
+                    `INSERT INTO saving (entry_id, type, title, amount, month, year) VALUES (?, ?, ?, ?, ?, ?)`,
+                    [entryId, newCategory, title || null, amount || oldEntry.amount, month, year]
                 );
             }
         }
@@ -195,7 +196,8 @@ router.put('/:id', auth, async (req, res) => {
         if (newGoalId && newGoalId !== oldEntry.goal_id) await updateGoalProgress(req.user.id, newGoalId);
 
         const [updatedEntry] = await pool.execute(
-            `SELECT id, user_id, type, amount, note, category, goal_id, created_at FROM entries WHERE user_id = ? AND id = ?`,
+            `SELECT id, user_id, type, amount, note, title, category, goal_id, created_at 
+             FROM entries WHERE user_id = ? AND id = ?`,
             [req.user.id, entryId]
         );
 
