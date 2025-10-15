@@ -7,11 +7,11 @@ export default function SavingsGoals() {
     const { activeGoals, completedGoals } = useSavingsGoals();
     const { entries } = useEntries();
 
-    // Only include savings entries meant for goals
+    // Total savings allocated toward goals (using category 'savingsgoal')
     const totalSavings = useMemo(
         () =>
             entries
-                .filter(e => e.type === 'saving' && e.note.toLowerCase().includes('goal'))
+                .filter(e => e.type === 'saving' && e.category === 'savingsgoal')
                 .reduce((sum, e) => sum + Number(e.amount), 0),
         [entries]
     );
@@ -19,8 +19,10 @@ export default function SavingsGoals() {
     return (
         <div className="min-h-screen bg-gray-50">
             <Navbar />
-            <div className="p-8">
-                <h1 className="text-3xl font-bold mb-2 text-gray-800 text-center">Savings Goals</h1>
+            <div className="p-8 max-w-4xl mx-auto">
+                <h1 className="text-3xl font-bold mb-2 text-gray-800 text-center">
+                    Savings Goals
+                </h1>
 
                 {/* Completed goals count */}
                 <p className="mb-4 text-lg font-medium text-center">
@@ -40,6 +42,7 @@ export default function SavingsGoals() {
                     ) : (
                         activeGoals.map(goal => {
                             const allocated = Number(goal.allocated_amount || 0);
+                            const remaining = Math.max(goal.goal_amount - allocated, 0);
                             const progress = goal.goal_amount
                                 ? Math.min((allocated / goal.goal_amount) * 100, 100)
                                 : 0;
@@ -65,8 +68,7 @@ export default function SavingsGoals() {
                                     </div>
 
                                     <p className="text-sm text-gray-500 mt-1">
-                                        ${allocated.toFixed(2)} / ${goal.goal_amount} —{' '}
-                                        {(goal.goal_amount - allocated).toFixed(2)} remaining
+                                        ${allocated.toFixed(2)} / ${goal.goal_amount} — ${remaining.toFixed(2)} remaining
                                     </p>
                                 </div>
                             );
