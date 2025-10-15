@@ -54,6 +54,14 @@ router.post('/', auth, async (req, res) => {
     const normalizedCategory = category?.toLowerCase() || null;
 
     try {
+        // Validate category strictly
+        if (type === 'expense' && !expenseCategories.includes(normalizedCategory)) {
+            return res.status(400).json({ error: `Invalid expense category: ${category}` });
+        }
+        if (type === 'saving' && !savingCategories.includes(normalizedCategory)) {
+            return res.status(400).json({ error: `Invalid saving category: ${category}` });
+        }
+
         const [result] = await pool.execute(
             `INSERT INTO entries (user_id, type, amount, note, category, goal_id) VALUES (?, ?, ?, ?, ?, ?)`,
             [req.user.id, type, amount, note || null, normalizedCategory, goal_id || null]
@@ -66,7 +74,7 @@ router.post('/', auth, async (req, res) => {
         const year = now.getFullYear();
 
         // Handle expenses
-        if (type === 'expense' && expenseCategories.includes(normalizedCategory)) {
+        if (type === 'expense') {
             await pool.execute(
                 `INSERT INTO expense (entry_id, type, month, year, amount) VALUES (?, ?, ?, ?, ?)`,
                 [entryId, normalizedCategory, month, year, amount]
@@ -74,7 +82,7 @@ router.post('/', auth, async (req, res) => {
         }
 
         // Handle savings
-        if (type === 'saving' && savingCategories.includes(normalizedCategory)) {
+        if (type === 'saving') {
             if (normalizedCategory === 'savingsgoal') {
                 if (!finalGoalId) {
                     const [goalResult] = await pool.execute(
@@ -82,11 +90,7 @@ router.post('/', auth, async (req, res) => {
                         [req.user.id, note || 'New Savings Goal', amount || 0]
                     );
                     finalGoalId = goalResult.insertId;
-
-                    await pool.execute(
-                        `UPDATE entries SET goal_id = ? WHERE id = ?`,
-                        [finalGoalId, entryId]
-                    );
+                    await pool.execute(`UPDATE entries SET goal_id = ? WHERE id = ?`, [finalGoalId, entryId]);
                 }
                 await updateGoalProgress(req.user.id, finalGoalId);
             } else {
@@ -98,8 +102,7 @@ router.post('/', auth, async (req, res) => {
         }
 
         const [newEntryRows] = await pool.execute(
-            `SELECT id, user_id, type, amount, note, category, goal_id, created_at 
-             FROM entries WHERE id = ? AND user_id = ?`,
+            `SELECT id, user_id, type, amount, note, category, goal_id, created_at FROM entries WHERE id = ? AND user_id = ?`,
             [entryId, req.user.id]
         );
 
@@ -123,6 +126,16 @@ router.put('/:id', auth, async (req, res) => {
         );
         if (!oldEntry) return res.status(404).json({ error: 'Entry not found' });
 
+        const newType = type || oldEntry.type;
+
+        // Validate category strictly
+        if (newType === 'expense' && normalizedCategory && !expenseCategories.includes(normalizedCategory)) {
+            return res.status(400).json({ error: `Invalid expense category: ${category}` });
+        }
+        if (newType === 'saving' && normalizedCategory && !savingCategories.includes(normalizedCategory)) {
+            return res.status(400).json({ error: `Invalid saving category: ${category}` });
+        }
+
         const updates = [];
         const values = [];
 
@@ -143,20 +156,13 @@ router.put('/:id', auth, async (req, res) => {
 
         // Remove old record from saving/expense
         if (oldEntry.type === 'expense' && oldEntry.category && expenseCategories.includes(oldEntry.category)) {
-            await pool.execute(
-                `DELETE FROM expense WHERE entry_id = ?`,
-                [entryId]
-            );
+            await pool.execute(`DELETE FROM expense WHERE entry_id = ?`, [entryId]);
         }
         if (oldEntry.type === 'saving' && oldEntry.category && oldEntry.category !== 'savingsgoal') {
-            await pool.execute(
-                `DELETE FROM saving WHERE entry_id = ?`,
-                [entryId]
-            );
+            await pool.execute(`DELETE FROM saving WHERE entry_id = ?`, [entryId]);
         }
 
         // Insert new record into correct table
-        const newType = type || oldEntry.type;
         const newCategory = normalizedCategory || oldEntry.category;
         const newGoalId = goal_id || oldEntry.goal_id;
 
@@ -211,7 +217,6 @@ router.delete('/:id', auth, async (req, res) => {
         );
 
         await pool.execute(`DELETE FROM entries WHERE user_id = ? AND id = ?`, [req.user.id, entryId]);
-
         await pool.execute(`DELETE FROM expense WHERE entry_id = ?`, [entryId]);
         await pool.execute(`DELETE FROM saving WHERE entry_id = ?`, [entryId]);
 

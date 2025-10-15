@@ -9,6 +9,9 @@ export default function BudgetingTab() {
     const [allocations, setAllocations] = useState({});
     const [allocateToSavings, setAllocateToSavings] = useState(false);
 
+    // Predefined categories (same as backend)
+    const expenseCategories = ['rent', 'food', 'utilities', 'entertainment', 'clothing', 'other'];
+
     useEffect(() => {
         fetchEntries();
     }, [fetchEntries]);
@@ -17,7 +20,9 @@ export default function BudgetingTab() {
     const expenses = filteredEntries.filter(
         e => e.type === 'expense' && new Date(e.created_at).getMonth() + 1 === currentMonth
     );
-    const categories = [...new Set(expenses.map(e => e.category))];
+
+    // Categories to show in budgeting modal: use all predefined
+    const categories = expenseCategories;
 
     const totalByCategory = categories.map(cat => {
         const total = expenses
@@ -35,7 +40,7 @@ export default function BudgetingTab() {
 
     const handleSubmitBudget = async () => {
         try {
-            // Create saving entries for allocations to each category
+            // Create expense entries for allocations to each category
             for (const [category, amount] of Object.entries(allocations)) {
                 if (amount && amount > 0) {
                     await addEntry({
@@ -53,7 +58,7 @@ export default function BudgetingTab() {
             if (allocateToSavings && remaining > 0) {
                 await addEntry({
                     type: 'saving',
-                    category: 'Remaining Income',
+                    category: 'savingsgoal', // must match backend
                     amount: parseFloat(remaining),
                     note: 'Remaining from budget',
                     month: currentMonth,
@@ -77,35 +82,33 @@ export default function BudgetingTab() {
         <div className="p-4">
             <h2 className="text-xl font-semibold mb-4">Monthly Budgeting</h2>
 
-            {totalByCategory.length === 0 ? (
+            {totalByCategory.every(c => c.total === 0) ? (
                 <p className="text-gray-500 italic">No expenses recorded this month.</p>
             ) : (
-                <>
-                    <div className="space-y-4 mb-6">
-                        {totalByCategory.map(({ category, total }) => (
-                            <div key={category}>
-                                <div className="flex justify-between mb-1">
-                                    <span>{category}</span>
-                                    <span>${total.toFixed(2)}</span>
-                                </div>
-                                <div className="h-4 bg-gray-200 rounded">
-                                    <div
-                                        className="h-4 bg-blue-500 rounded"
-                                        style={{ width: `${Math.min((total / 1000) * 100, 100)}%` }}
-                                    ></div>
-                                </div>
+                <div className="space-y-4 mb-6">
+                    {totalByCategory.map(({ category, total }) => (
+                        <div key={category}>
+                            <div className="flex justify-between mb-1">
+                                <span>{category}</span>
+                                <span>${total.toFixed(2)}</span>
                             </div>
-                        ))}
-                    </div>
-
-                    <button
-                        onClick={() => setIsBudgeting(true)}
-                        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-                    >
-                        Start Budgeting Session
-                    </button>
-                </>
+                            <div className="h-4 bg-gray-200 rounded">
+                                <div
+                                    className="h-4 bg-blue-500 rounded"
+                                    style={{ width: `${Math.min((total / 1000) * 100, 100)}%` }}
+                                ></div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
             )}
+
+            <button
+                onClick={() => setIsBudgeting(true)}
+                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+            >
+                Start Budgeting Session
+            </button>
 
             {/* Budgeting Modal */}
             {isBudgeting && (
@@ -125,17 +128,15 @@ export default function BudgetingTab() {
                         </label>
 
                         {categories.map(cat => (
-                            <div key={cat} className="mb-3">
-                                <div className="flex justify-between items-center">
-                                    <span className="text-sm">{cat}</span>
-                                    <input
-                                        type="number"
-                                        value={allocations[cat] || ''}
-                                        onChange={e => handleAllocationChange(cat, e.target.value)}
-                                        placeholder="0"
-                                        className="w-24 text-right border border-gray-300 rounded p-1"
-                                    />
-                                </div>
+                            <div key={cat} className="mb-3 flex justify-between items-center">
+                                <span className="text-sm">{cat}</span>
+                                <input
+                                    type="number"
+                                    value={allocations[cat] || ''}
+                                    onChange={e => handleAllocationChange(cat, e.target.value)}
+                                    placeholder="0"
+                                    className="w-24 text-right border border-gray-300 rounded p-1"
+                                />
                             </div>
                         ))}
 
