@@ -3,23 +3,21 @@ const router = express.Router();
 const pool = require('../config/db');
 const auth = require('../middleware/auth');
 
-// ✅ Helper to recalculate goal progress
+// Predefined categories
+const expenseCategories = ['rent', 'food', 'utilities', 'entertainment', 'clothing', 'other'];
+const savingCategories = ['emergency', 'roth ira', 'stocks', '401k', 'savingsgoal'];
+
+// Helper: Recalculate goal progress
 async function updateGoalProgress(userId, goalId) {
     if (!goalId) return;
 
-    // Get total saved for this goal
     const [[{ total }]] = await pool.execute(
-        `SELECT COALESCE(SUM(amount), 0) AS total 
-         FROM entries 
-         WHERE user_id = ? AND goal_id = ?`,
+        `SELECT COALESCE(SUM(amount), 0) AS total FROM entries WHERE user_id = ? AND goal_id = ?`,
         [userId, goalId]
     );
 
-    // Get the goal info
     const [[goal]] = await pool.execute(
-        `SELECT goal_amount, completed 
-         FROM goals 
-         WHERE id = ? AND user_id = ?`,
+        `SELECT goal_amount, completed FROM goals WHERE id = ? AND user_id = ?`,
         [goalId, userId]
     );
 
@@ -27,28 +25,22 @@ async function updateGoalProgress(userId, goalId) {
 
     const isCompleted = total >= goal.goal_amount;
 
-    // Update goal allocation + completion status
     await pool.execute(
         `UPDATE goals 
-         SET allocated_amount = ?, 
-             completed = ?, 
-             completed_at = ${isCompleted ? 'NOW()' : 'NULL'}
+         SET allocated_amount = ?, completed = ?, completed_at = ${isCompleted ? 'NOW()' : 'NULL'}
          WHERE id = ? AND user_id = ?`,
         [total, isCompleted ? 1 : 0, goalId, userId]
     );
 }
 
-// Get all entries for the logged-in user
+// --- GET all entries ---
 router.get('/', auth, async (req, res) => {
     try {
         const [entries] = await pool.execute(
             `SELECT id, user_id, type, amount, note, category, goal_id, created_at 
-             FROM entries 
-             WHERE user_id = ? 
-             ORDER BY created_at DESC`,
+             FROM entries WHERE user_id = ? ORDER BY created_at DESC`,
             [req.user.id]
         );
-
         res.json(entries);
     } catch (err) {
         console.error('Error fetching entries:', err);
@@ -56,26 +48,59 @@ router.get('/', auth, async (req, res) => {
     }
 });
 
-// Create a new entry
+// --- POST a new entry ---
 router.post('/', auth, async (req, res) => {
-    const { type, amount, note, category, goal_id } = req.body;
+    let { type, amount, note, category, goal_id } = req.body;
+    const normalizedCategory = category?.toLowerCase() || null;
 
     try {
         const [result] = await pool.execute(
-            `INSERT INTO entries (user_id, type, amount, note, category, goal_id) 
-             VALUES (?, ?, ?, ?, ?, ?)`,
-            [req.user.id, type, amount, note || null, category || null, goal_id || null]
+            `INSERT INTO entries (user_id, type, amount, note, category, goal_id) VALUES (?, ?, ?, ?, ?, ?)`,
+            [req.user.id, type, amount, note || null, normalizedCategory, goal_id || null]
         );
 
-        // Recalculate goal if relevant
-        if (goal_id) await updateGoalProgress(req.user.id, goal_id);
+        let finalGoalId = goal_id;
+        const entryId = result.insertId;
+        const now = new Date();
+        const month = now.getMonth() + 1;
+        const year = now.getFullYear();
 
-        // Return full inserted entry
+        // Handle expenses
+        if (type === 'expense' && expenseCategories.includes(normalizedCategory)) {
+            await pool.execute(
+                `INSERT INTO expense (entry_id, type, month, year, amount) VALUES (?, ?, ?, ?, ?)`,
+                [entryId, normalizedCategory, month, year, amount]
+            );
+        }
+
+        // Handle savings
+        if (type === 'saving' && savingCategories.includes(normalizedCategory)) {
+            if (normalizedCategory === 'savingsgoal') {
+                if (!finalGoalId) {
+                    const [goalResult] = await pool.execute(
+                        `INSERT INTO goals (user_id, note, goal_amount, allocated_amount, completed) VALUES (?, ?, ?, 0, 0)`,
+                        [req.user.id, note || 'New Savings Goal', amount || 0]
+                    );
+                    finalGoalId = goalResult.insertId;
+
+                    await pool.execute(
+                        `UPDATE entries SET goal_id = ? WHERE id = ?`,
+                        [finalGoalId, entryId]
+                    );
+                }
+                await updateGoalProgress(req.user.id, finalGoalId);
+            } else {
+                await pool.execute(
+                    `INSERT INTO saving (entry_id, type, amount, month, year) VALUES (?, ?, ?, ?, ?)`,
+                    [entryId, normalizedCategory, amount, month, year]
+                );
+            }
+        }
+
         const [newEntryRows] = await pool.execute(
             `SELECT id, user_id, type, amount, note, category, goal_id, created_at 
-             FROM entries 
-             WHERE id = ? AND user_id = ?`,
-            [result.insertId, req.user.id]
+             FROM entries WHERE id = ? AND user_id = ?`,
+            [entryId, req.user.id]
         );
 
         res.status(201).json(newEntryRows[0]);
@@ -85,46 +110,86 @@ router.post('/', auth, async (req, res) => {
     }
 });
 
-// Update an entry
+// --- PUT: Update an entry ---
 router.put('/:id', auth, async (req, res) => {
     const entryId = req.params.id;
-    const { type, amount, note, category, goal_id } = req.body;
+    let { type, amount, note, category, goal_id } = req.body;
+    const normalizedCategory = category?.toLowerCase() || null;
 
     try {
-        // Get the current goal_id before updating
         const [[oldEntry]] = await pool.execute(
-            `SELECT goal_id FROM entries WHERE id = ? AND user_id = ?`,
+            `SELECT type, category, amount, goal_id FROM entries WHERE id = ? AND user_id = ?`,
             [entryId, req.user.id]
         );
+        if (!oldEntry) return res.status(404).json({ error: 'Entry not found' });
 
         const updates = [];
         const values = [];
 
-        if (type !== undefined) { updates.push('type = ?'); values.push(type); }
-        if (amount !== undefined) { updates.push('amount = ?'); values.push(amount); }
-        if (note !== undefined) { updates.push('note = ?'); values.push(note); }
-        if (category !== undefined) { updates.push('category = ?'); values.push(category); }
-        if (goal_id !== undefined) { updates.push('goal_id = ?'); values.push(goal_id); }
+        if (type !== undefined) updates.push('type = ?') && values.push(type);
+        if (amount !== undefined) updates.push('amount = ?') && values.push(amount);
+        if (note !== undefined) updates.push('note = ?') && values.push(note);
+        if (category !== undefined) updates.push('category = ?') && values.push(normalizedCategory);
+        if (goal_id !== undefined) updates.push('goal_id = ?') && values.push(goal_id);
 
-        if (updates.length === 0)
-            return res.status(400).json({ error: 'Nothing to update' });
+        if (!updates.length) return res.status(400).json({ error: 'Nothing to update' });
 
         values.push(req.user.id, entryId);
+        await pool.execute(`UPDATE entries SET ${updates.join(', ')} WHERE user_id = ? AND id = ?`, values);
 
-        await pool.execute(
-            `UPDATE entries SET ${updates.join(', ')} WHERE user_id = ? AND id = ?`,
-            values
-        );
+        const now = new Date();
+        const month = now.getMonth() + 1;
+        const year = now.getFullYear();
 
-        // Recalculate goals for old and new goal_id
-        if (oldEntry?.goal_id) await updateGoalProgress(req.user.id, oldEntry.goal_id);
-        if (goal_id && goal_id !== oldEntry?.goal_id)
-            await updateGoalProgress(req.user.id, goal_id);
+        // Remove old record from saving/expense
+        if (oldEntry.type === 'expense' && oldEntry.category && expenseCategories.includes(oldEntry.category)) {
+            await pool.execute(
+                `DELETE FROM expense WHERE entry_id = ?`,
+                [entryId]
+            );
+        }
+        if (oldEntry.type === 'saving' && oldEntry.category && oldEntry.category !== 'savingsgoal') {
+            await pool.execute(
+                `DELETE FROM saving WHERE entry_id = ?`,
+                [entryId]
+            );
+        }
+
+        // Insert new record into correct table
+        const newType = type || oldEntry.type;
+        const newCategory = normalizedCategory || oldEntry.category;
+        const newGoalId = goal_id || oldEntry.goal_id;
+
+        if (newType === 'expense' && expenseCategories.includes(newCategory)) {
+            await pool.execute(
+                `INSERT INTO expense (entry_id, type, month, year, amount) VALUES (?, ?, ?, ?, ?)`,
+                [entryId, newCategory, month, year, amount || oldEntry.amount]
+            );
+        } else if (newType === 'saving' && savingCategories.includes(newCategory)) {
+            if (newCategory === 'savingsgoal') {
+                let finalGoalId = newGoalId;
+                if (!finalGoalId) {
+                    const [goalResult] = await pool.execute(
+                        `INSERT INTO goals (user_id, note, goal_amount, allocated_amount, completed) VALUES (?, ?, ?, 0, 0)`,
+                        [req.user.id, note || 'New Savings Goal', amount || 0]
+                    );
+                    finalGoalId = goalResult.insertId;
+                    await pool.execute(`UPDATE entries SET goal_id = ? WHERE id = ?`, [finalGoalId, entryId]);
+                }
+                await updateGoalProgress(req.user.id, finalGoalId);
+            } else {
+                await pool.execute(
+                    `INSERT INTO saving (entry_id, type, amount, month, year) VALUES (?, ?, ?, ?, ?)`,
+                    [entryId, newCategory, amount || oldEntry.amount, month, year]
+                );
+            }
+        }
+
+        if (oldEntry.goal_id) await updateGoalProgress(req.user.id, oldEntry.goal_id);
+        if (newGoalId && newGoalId !== oldEntry.goal_id) await updateGoalProgress(req.user.id, newGoalId);
 
         const [updatedEntry] = await pool.execute(
-            `SELECT id, user_id, type, amount, note, category, goal_id, created_at 
-             FROM entries 
-             WHERE user_id = ? AND id = ?`,
+            `SELECT id, user_id, type, amount, note, category, goal_id, created_at FROM entries WHERE user_id = ? AND id = ?`,
             [req.user.id, entryId]
         );
 
@@ -135,23 +200,21 @@ router.put('/:id', auth, async (req, res) => {
     }
 });
 
-// Delete an entry
+// --- DELETE an entry ---
 router.delete('/:id', auth, async (req, res) => {
     const entryId = req.params.id;
 
     try {
-        // Get goal_id before deleting
         const [[entry]] = await pool.execute(
             `SELECT goal_id FROM entries WHERE id = ? AND user_id = ?`,
             [entryId, req.user.id]
         );
 
-        await pool.execute(
-            'DELETE FROM entries WHERE user_id = ? AND id = ?',
-            [req.user.id, entryId]
-        );
+        await pool.execute(`DELETE FROM entries WHERE user_id = ? AND id = ?`, [req.user.id, entryId]);
 
-        // Recalculate if goal-related
+        await pool.execute(`DELETE FROM expense WHERE entry_id = ?`, [entryId]);
+        await pool.execute(`DELETE FROM saving WHERE entry_id = ?`, [entryId]);
+
         if (entry?.goal_id) await updateGoalProgress(req.user.id, entry.goal_id);
 
         res.json({ message: 'Entry deleted successfully' });

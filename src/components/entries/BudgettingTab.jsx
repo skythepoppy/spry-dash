@@ -14,12 +14,14 @@ export default function BudgetingTab() {
     }, [fetchEntries]);
 
     // Only consider this month's expenses
-    const expenses = filteredEntries.filter(e => e.type === 'expense');
-    const categories = [...new Set(expenses.map(e => e.note))];
+    const expenses = filteredEntries.filter(
+        e => e.type === 'expense' && new Date(e.created_at).getMonth() + 1 === currentMonth
+    );
+    const categories = [...new Set(expenses.map(e => e.category))];
 
     const totalByCategory = categories.map(cat => {
         const total = expenses
-            .filter(e => e.note === cat)
+            .filter(e => e.category === cat)
             .reduce((sum, e) => sum + Number(e.amount), 0);
         return { category: cat, total };
     });
@@ -33,25 +35,27 @@ export default function BudgetingTab() {
 
     const handleSubmitBudget = async () => {
         try {
-            // Create a budget entry for each category allocation
+            // Create saving entries for allocations to each category
             for (const [category, amount] of Object.entries(allocations)) {
                 if (amount && amount > 0) {
                     await addEntry({
-                        type: 'budget',
-                        note: category,
+                        type: 'expense',
+                        category,
                         amount: parseFloat(amount),
+                        note: `Budgeted`,
                         month: currentMonth,
                         year: currentYear,
                     });
                 }
             }
 
-            // Optionally create a savings entry for leftover
+            // Optionally allocate remaining income to savings
             if (allocateToSavings && remaining > 0) {
                 await addEntry({
                     type: 'saving',
-                    note: 'Remaining from budget',
+                    category: 'Remaining Income',
                     amount: parseFloat(remaining),
+                    note: 'Remaining from budget',
                     month: currentMonth,
                     year: currentYear,
                 });
