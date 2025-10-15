@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useEntries } from '../context/EntriesContext';
+import { useEntries } from '../../context/EntriesContext';
 
 export default function BudgetingTab() {
     const { filteredEntries, fetchEntries, addEntry, currentMonth, currentYear } = useEntries();

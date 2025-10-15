@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import Navbar from '../components/Navbar';
-import ExpensesTab from '../components/ExpensesTab';
-import BudgetingTab from '../components/BudgetingTab';
-import SavingsTab from '../components/SavingsTab';
+import ExpensesTab from '../components/entries/ExpensesTab';
+import BudgetingTab from '../components/entries/BudgettingTab';
+import SavingsTab from '../components/entries/SavingsTab';
 import { EntriesProvider, useEntries } from '../context/EntriesContext';
 
 function EntriesContent() {

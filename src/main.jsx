@@ -7,11 +7,13 @@ import { SavingsGoalsProvider } from './context/SavingsGoalsContext.jsx';
 
 function Root() {
   return (
-    <EntriesProvider>
-      <SavingsGoalsProvider>
+
+    <SavingsGoalsProvider>
+      <EntriesProvider>
         <App />
-      </SavingsGoalsProvider>
-    </EntriesProvider>
+      </EntriesProvider>
+    </SavingsGoalsProvider>
+
   );
 }
 
