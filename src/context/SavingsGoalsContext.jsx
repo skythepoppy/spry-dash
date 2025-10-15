@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import api from '../api/axios';
 
 const SavingsGoalsContext = createContext();
@@ -7,12 +7,12 @@ export function SavingsGoalsProvider({ children }) {
   const [goals, setGoals] = useState([]);
   const token = localStorage.getItem('token');
 
-  const authHeaders = () => ({
+  const authHeaders = useCallback(() => ({
     headers: { Authorization: `Bearer ${token}` },
-  });
+  }), [token]);
 
   // Fetch goals from backend
-  const fetchGoals = async () => {
+  const fetchGoals = useCallback(async () => {
     if (!token) return;
     try {
       const res = await api.get('/goals', authHeaders());
@@ -27,19 +27,31 @@ export function SavingsGoalsProvider({ children }) {
     } catch (err) {
       console.error('Failed to fetch goals:', err.response?.data || err.message);
     }
+  }, [token, authHeaders]);
+
+  const refreshGoals = async () => {
+    await fetchGoals();
   };
+
+  // Add remaining calculation
+  const goalsWithRemaining = goals.map(g => ({
+    ...g,
+    remaining: g.goal_amount - g.allocated_amount
+  }));
 
   useEffect(() => {
     fetchGoals();
-  }, [token]);
+  }, [fetchGoals]);
 
   return (
     <SavingsGoalsContext.Provider
       value={{
-        goals,
-        activeGoals: goals.filter(g => !g.completed),
-        completedGoals: goals.filter(g => g.completed),
+        goals: goalsWithRemaining,
+        activeGoals: goalsWithRemaining.filter(g => !g.completed),
+        completedGoals: goalsWithRemaining.filter(g => g.completed),
         fetchGoals,
+        refreshGoals,
+        validCategories: ['emergency','roth ira','stocks','401k','savingsgoal'], // optional for frontend validation
       }}
     >
       {children}

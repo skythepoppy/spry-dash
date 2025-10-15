@@ -6,21 +6,23 @@ export default function ExpensesTab() {
     const [form, setForm] = useState({ category: '', amount: '' });
     const [submitting, setSubmitting] = useState(false);
 
+    const expenseCategories = ['rent', 'food', 'utilities', 'entertainment', 'clothing', 'other'];
+
     useEffect(() => {
         fetchEntries();
     }, [fetchEntries, currentMonth, currentYear]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!form.category.trim() || !form.amount) return;
+        if (!form.category || !form.amount) return;
 
         try {
             setSubmitting(true);
             await addEntry({
                 type: 'expense',
-                note: form.category.trim(),
+                category: form.category,
                 amount: Number(form.amount),
-                created_at: new Date().toISOString(),
+                note: form.category, // keep note same as category for now
                 month: currentMonth,
                 year: currentYear,
             });
@@ -38,13 +40,16 @@ export default function ExpensesTab() {
     return (
         <div>
             <form onSubmit={handleSubmit} className="flex gap-2 mb-6">
-                <input
-                    type="text"
-                    placeholder="Category"
+                <select
                     value={form.category}
                     onChange={e => setForm({ ...form, category: e.target.value })}
                     className="flex-1 border p-2 rounded"
-                />
+                >
+                    <option value="">Select Category</option>
+                    {expenseCategories.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                </select>
                 <input
                     type="number"
                     placeholder="Amount"
@@ -52,7 +57,7 @@ export default function ExpensesTab() {
                     onChange={e => setForm({ ...form, amount: e.target.value })}
                     className="w-32 border p-2 rounded"
                 />
-                <button type="submit" disabled={submitting} className="bg-blue-500 text-white px-4 py-2 rounded">
+                <button type="submit" disabled={submitting || !form.category || !form.amount} className="bg-blue-500 text-white px-4 py-2 rounded">
                     {submitting ? 'Adding...' : 'Add'}
                 </button>
             </form>
