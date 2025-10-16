@@ -10,9 +10,9 @@ export default function BudgetingTab() {
         currentMonth,
         currentYear,
         budgetAllocations = {},
-        updateBudgetAllocations = () => { },
-        availableSavings = 0,
-        setAvailableSavings = () => { },
+        updateBudgetAllocations = () => {},
+        clearBudgetAllocations = () => {},
+        addToAvailableSavings = () => {},
     } = useEntries();
 
     const { activeGoals, fetchGoals } = useSavingsGoals();
@@ -20,34 +20,42 @@ export default function BudgetingTab() {
     const [isBudgeting, setIsBudgeting] = useState(false);
     const [income, setIncome] = useState('');
     const [allocations, setAllocations] = useState({});
-    const [titles, setTitles] = useState({});
     const [allocateToSavings, setAllocateToSavings] = useState(false);
     const [selectedGoalId, setSelectedGoalId] = useState(null);
     const [savingsTitle, setSavingsTitle] = useState('');
 
-    // only use categories that already have recorded expenses
+    // Only use categories that already have recorded expenses
     const expenseEntries = filteredEntries.filter(e => e.type === 'expense');
-    const recordedCategories = useMemo(() => [...new Set(expenseEntries.map(e => e.category))], [expenseEntries]);
+    const recordedCategories = useMemo(
+        () => [...new Set(expenseEntries.map(e => e.category))],
+        [expenseEntries]
+    );
 
     useEffect(() => {
         fetchEntries();
         fetchGoals();
     }, [fetchEntries, fetchGoals]);
 
-    // calculate spent vs allocated for progress bars (non-compounding)
+    // Prefill modal when editing existing budget
+    useEffect(() => {
+        if (isBudgeting && Object.keys(budgetAllocations).length > 0) {
+            setAllocations({ ...budgetAllocations });
+            const totalIncome = Object.values(budgetAllocations).reduce(
+                (sum, val) => sum + Number(val || 0),
+                0
+            );
+            setIncome(totalIncome);
+        }
+    }, [isBudgeting, budgetAllocations]);
+
+    // Calculate progress bars (planned vs allocated)
     const totalByCategory = recordedCategories.map(cat => {
-        const spent = expenseEntries
-            .filter(e => e.category === cat)
-            .reduce((sum, e) => sum + Number(e.amount), 0);
-
-        // only use saved allocations, not new modal inputs
-        const allocated = Number(budgetAllocations[cat] || 0);
-
-        const progress = allocated > 0 ? Math.min((spent / allocated) * 100, 100) : 0;
-
-        return { category: cat, spent, allocated, progress };
+        const allocated = Number(allocations[cat] ?? budgetAllocations[cat] ?? 0);
+        const progress = allocated > 0 ? 100 : 0; // fully planned
+        return { category: cat, allocated, progress };
     });
 
+    const hasExistingBudget = Object.keys(budgetAllocations).length > 0;
     const totalAllocated = Object.values(allocations).reduce((sum, a) => sum + Number(a || 0), 0);
     const remaining = Math.max(Number(income || 0) - totalAllocated, 0);
 
@@ -55,63 +63,44 @@ export default function BudgetingTab() {
         setAllocations(prev => ({ ...prev, [category]: Number(value) }));
     };
 
-    const handleTitleChange = (category, value) => {
-        setTitles(prev => ({ ...prev, [category]: value }));
-    };
-
     const handleSubmitBudget = async () => {
+        if (!income) return;
         try {
-            // save allocations in context
-            updateBudgetAllocations({ ...budgetAllocations, ...allocations });
+            updateBudgetAllocations({ ...allocations });
 
-            // create new entries for this budgeting session
-            for (const cat of recordedCategories) {
-                const amount = Number(allocations[cat] || 0);
-                if (amount > 0) {
+            if (remaining > 0) {
+                if (allocateToSavings && selectedGoalId) {
                     await addEntry({
-                        type: 'expense',
-                        category: cat,
-                        amount,
-                        note: titles[cat] || cat,
-                        title: titles[cat] || '',
+                        type: 'saving',
+                        category: 'savingsgoal',
+                        amount: remaining,
+                        note: savingsTitle || `Auto-saved $${remaining.toFixed(2)}`,
+                        title: savingsTitle || `Auto-saved $${remaining.toFixed(2)}`,
+                        goal_id: selectedGoalId,
                         month: currentMonth,
                         year: currentYear,
                     });
+                } else {
+                    await addToAvailableSavings(remaining);
                 }
             }
 
-            // allocate remaining to savings goal if selected
-            if (allocateToSavings && remaining > 0 && selectedGoalId) {
-                await addEntry({
-                    type: 'saving',
-                    category: 'savingsgoal',
-                    amount: remaining,
-                    note: savingsTitle || `Auto-saved $${remaining.toFixed(2)}`,
-                    title: savingsTitle || `Auto-saved $${remaining.toFixed(2)}`,
-                    goal_id: selectedGoalId,
-                    month: currentMonth,
-                    year: currentYear,
-                });
-            }
-
-            // if remaining funds aren't allocated to a savings goal, store as available savings
-            if (!allocateToSavings || !selectedGoalId) {
-                setAvailableSavings(prev => prev + remaining);
-            }
-
-            // reset UI
+            // Reset modal
             setIsBudgeting(false);
             setIncome('');
             setAllocations({});
-            setTitles({});
             setAllocateToSavings(false);
             setSavingsTitle('');
             setSelectedGoalId(null);
-
-            await fetchEntries();
-            await fetchGoals();
         } catch (err) {
             console.error('Failed to submit budget:', err);
+        }
+    };
+
+    const handleDeleteBudget = () => {
+        if (window.confirm('Are you sure you want to delete this budget for this month?')) {
+            clearBudgetAllocations();
+            setAllocations({});
         }
     };
 
@@ -123,13 +112,11 @@ export default function BudgetingTab() {
                 <p className="text-gray-500 italic">No recorded expenses yet.</p>
             ) : (
                 <div className="space-y-4 mb-6">
-                    {totalByCategory.map(({ category, spent, allocated, progress }) => (
+                    {totalByCategory.map(({ category, allocated, progress }) => (
                         <div key={category}>
                             <div className="flex justify-between mb-1">
                                 <span>{category}</span>
-                                <span>
-                                    ${spent.toFixed(2)} / ${allocated.toFixed(2)}
-                                </span>
+                                <span>${allocated.toFixed(2)} / ${allocated.toFixed(2)}</span>
                             </div>
                             <div className="h-4 bg-gray-200 rounded">
                                 <div
@@ -142,17 +129,36 @@ export default function BudgetingTab() {
                 </div>
             )}
 
-            <button
-                onClick={() => setIsBudgeting(true)}
-                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-            >
-                Start Budgeting Session
-            </button>
+            {!hasExistingBudget ? (
+                <button
+                    onClick={() => setIsBudgeting(true)}
+                    className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                >
+                    Start Budgeting Session
+                </button>
+            ) : (
+                <div className="flex space-x-3">
+                    <button
+                        onClick={() => setIsBudgeting(true)}
+                        className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600"
+                    >
+                        Edit Budget
+                    </button>
+                    <button
+                        onClick={handleDeleteBudget}
+                        className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+                    >
+                        Delete Budget
+                    </button>
+                </div>
+            )}
 
             {isBudgeting && (
                 <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
                     <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-lg relative">
-                        <h3 className="text-lg font-semibold mb-4">New Budgeting Session</h3>
+                        <h3 className="text-lg font-semibold mb-4">
+                            {hasExistingBudget ? 'Edit Budget' : 'New Budgeting Session'}
+                        </h3>
 
                         <label className="block mb-3">
                             <span className="text-sm font-medium">Total Monthly Income:</span>
@@ -170,17 +176,10 @@ export default function BudgetingTab() {
                                 <span className="w-24 text-sm">{cat}</span>
                                 <input
                                     type="number"
-                                    value={allocations[cat] || ''}
+                                    value={allocations[cat] ?? budgetAllocations[cat] ?? ''}
                                     onChange={e => handleAllocationChange(cat, e.target.value)}
-                                    placeholder="Amount"
+                                    placeholder="Allocate"
                                     className="w-20 text-right border border-gray-300 rounded p-1 text-sm"
-                                />
-                                <input
-                                    type="text"
-                                    value={titles[cat] || ''}
-                                    onChange={e => handleTitleChange(cat, e.target.value)}
-                                    placeholder="Title / Description"
-                                    className="flex-1 border border-gray-300 rounded p-1 text-sm"
                                 />
                             </div>
                         ))}
@@ -202,7 +201,7 @@ export default function BudgetingTab() {
                                         className="mr-2"
                                     />
                                     <span className="text-sm">
-                                        Allocate remaining ${remaining.toFixed(2)} to a Savings Goal
+                                        Allocate remaining ${remaining.toFixed(2)} to a specific Savings Goal
                                     </span>
                                 </label>
 
@@ -213,7 +212,9 @@ export default function BudgetingTab() {
                                             onChange={e => setSelectedGoalId(Number(e.target.value))}
                                             className="border border-gray-300 rounded p-1 text-sm w-full"
                                         >
-                                            <option value="" disabled>Select a Goal</option>
+                                            <option value="" disabled>
+                                                Select a Goal
+                                            </option>
                                             {activeGoals.map(g => (
                                                 <option key={g.id} value={g.id}>
                                                     {g.note} — ${Number(g.remaining || 0).toFixed(2)} remaining
@@ -227,18 +228,12 @@ export default function BudgetingTab() {
                                             placeholder="Title for savings entry"
                                             className="border border-gray-300 rounded p-1 text-sm w-full"
                                         />
-                                        <span className="text-sm font-medium">${remaining.toFixed(2)}</span>
                                     </div>
                                 )}
                             </div>
                         )}
 
                         <div className="flex justify-end mt-6 space-x-2">
-                            {remaining > 0 && (
-                                <span className="text-red-600 text-sm mr-auto">
-                                    ⚠ All income must be allocated before saving.
-                                </span>
-                            )}
                             <button
                                 onClick={() => setIsBudgeting(false)}
                                 className="px-4 py-2 border border-gray-400 rounded hover:bg-gray-100"
@@ -247,13 +242,10 @@ export default function BudgetingTab() {
                             </button>
                             <button
                                 onClick={handleSubmitBudget}
-                                disabled={
-                                    !income ||
-                                    remaining > 0 && (!allocateToSavings || !selectedGoalId)
-                                }
+                                disabled={!income}
                                 className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400"
                             >
-                                Save Budget
+                                {hasExistingBudget ? 'Save Changes' : 'Save Budget'}
                             </button>
                         </div>
                     </div>

@@ -14,7 +14,7 @@ export function EntriesProvider({ children }) {
     const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
     const [budgetAllocations, setBudgetAllocations] = useState({});
 
-    // Track leftover funds that weren't allocated to a savings goal
+    // Track leftover funds not allocated to savings goals
     const [availableSavings, setAvailableSavings] = useState(() => {
         return Number(localStorage.getItem('availableSavings') || 0);
     });
@@ -26,7 +26,7 @@ export function EntriesProvider({ children }) {
         localStorage.setItem('availableSavings', availableSavings);
     }, [availableSavings]);
 
-    // Optional: Reset leftover funds when month/year changes
+    // Optional: reset leftover funds when month/year changes
     useEffect(() => {
         setAvailableSavings(0);
     }, [currentMonth, currentYear]);
@@ -126,6 +126,23 @@ export function EntriesProvider({ children }) {
         }
     };
 
+    // Add available savings helper
+    const addToAvailableSavings = async (amount) => {
+        if (!amount || amount <= 0) return;
+        setAvailableSavings(prev => {
+            const updated = prev + amount;
+            localStorage.setItem('availableSavings', updated);
+            return updated;
+        });
+
+        try {
+            // Optional backend sync if supported
+            await api.post('/savings-pool', { amount }, authHeaders());
+        } catch (err) {
+            console.warn('Unable to sync available savings to backend:', err.message);
+        }
+    };
+
     const filteredEntries = useMemo(() => {
         return entries.filter(e => {
             const date = e.created_at ? new Date(e.created_at) : new Date();
@@ -151,7 +168,8 @@ export function EntriesProvider({ children }) {
                 budgetAllocations,
                 updateBudgetAllocations,
                 availableSavings,
-                setAvailableSavings, 
+                setAvailableSavings,
+                addToAvailableSavings,
             }}
         >
             {children}
