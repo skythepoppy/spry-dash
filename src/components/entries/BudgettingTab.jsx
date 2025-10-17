@@ -1,20 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useContext } from 'react';
 import { useEntries } from '../../context/EntriesContext';
 import { useSavingsGoals } from '../../context/SavingsGoalsContext';
+import { BudgetContext } from '../../context/BudgetContext';
 
 export default function BudgetingTab() {
-    const {
-        filteredEntries,
-        fetchEntries,
-        addEntry,
-        currentMonth,
-        currentYear,
-        budgetAllocations = {},
-        updateBudgetAllocations = () => {},
-        setAvailableSavings,
-    } = useEntries();
-
+    const { filteredEntries, fetchEntries, addEntry, currentMonth, currentYear, setAvailableSavings } = useEntries();
     const { activeGoals, fetchGoals } = useSavingsGoals();
+    const { budget, updateBudget, loading } = useContext(BudgetContext);
 
     const [isBudgeting, setIsBudgeting] = useState(false);
     const [income, setIncome] = useState('');
@@ -23,12 +15,12 @@ export default function BudgetingTab() {
     const [selectedGoalId, setSelectedGoalId] = useState(null);
     const [savingsTitle, setSavingsTitle] = useState('');
 
-    // --- Only call fetchEntries and fetchGoals once on mount ---
+    // Fetch entries and goals on mount
     useEffect(() => {
         fetchEntries();
         fetchGoals();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // no dependencies = only on first render
+    }, []);
 
     const expenseEntries = useMemo(
         () => filteredEntries.filter(e => e.type === 'expense'),
@@ -40,39 +32,43 @@ export default function BudgetingTab() {
         [expenseEntries]
     );
 
-    // Prefill allocations when opening the budgeting modal
+    // Prefill allocations when opening modal
     useEffect(() => {
         if (isBudgeting) {
             const prefill = {};
             recordedCategories.forEach(cat => {
-                prefill[cat] = budgetAllocations[cat] ?? 0;
+                const spent = expenseEntries
+                    .filter(e => e.category === cat)
+                    .reduce((sum, e) => sum + Number(e.amount), 0);
+
+                // Default allocation: saved budget or at least the spent amount
+                prefill[cat] = budget?.allocations?.[cat] ?? spent ?? 0;
             });
             setAllocations(prefill);
 
-            // Auto-set income to total allocated if blank
             if (!income) {
                 const totalAllocated = Object.values(prefill).reduce((sum, val) => sum + Number(val), 0);
-                setIncome(totalAllocated);
+                setIncome(budget?.totalIncome ?? totalAllocated);
             }
         }
-    }, [isBudgeting, budgetAllocations, recordedCategories]);
+    }, [isBudgeting, budget, recordedCategories, expenseEntries, income]);
 
-    // --- Compute totals ---
+    // Compute totals
     const totalByCategory = recordedCategories.map(cat => {
         const spent = expenseEntries
             .filter(e => e.category === cat)
             .reduce((sum, e) => sum + Number(e.amount), 0);
 
-        const allocated = Number(allocations[cat] ?? budgetAllocations[cat] ?? 0);
+        const allocated = Number(allocations[cat] ?? budget?.allocations?.[cat] ?? spent ?? 0);
         const remainingForCategory = Math.max(allocated - spent, 0);
         const progress = allocated > 0 ? Math.min((spent / allocated) * 100, 100) : 0;
 
         return { category: cat, spent, allocated, remainingForCategory, progress };
     });
 
-    const hasExistingBudget = Object.keys(budgetAllocations).length > 0;
+    const hasExistingBudget = budget?.allocations && Object.keys(budget.allocations).length > 0;
     const totalAllocated = Object.values(allocations).reduce((sum, a) => sum + Number(a || 0), 0);
-    const remaining = Math.max(Number(income || 0) - totalAllocated, 0);
+    const remaining = Math.max(Number(income || budget?.totalIncome || 0) - totalAllocated, 0);
 
     const handleAllocationChange = (category, value) => {
         setAllocations(prev => ({ ...prev, [category]: Number(value) }));
@@ -81,7 +77,7 @@ export default function BudgetingTab() {
     const handleSubmitBudget = async () => {
         if (!income) return;
         try {
-            updateBudgetAllocations({ ...allocations });
+            await updateBudget({ allocations, totalIncome: Number(income) });
 
             if (remaining > 0) {
                 if (allocateToSavings && selectedGoalId) {
@@ -96,7 +92,6 @@ export default function BudgetingTab() {
                         year: currentYear,
                     });
                 } else {
-                    // Add leftover to available savings pool
                     setAvailableSavings(prev => Number(prev) + Number(remaining));
                 }
             }
@@ -112,12 +107,15 @@ export default function BudgetingTab() {
         }
     };
 
-    const handleDeleteBudget = () => {
+    const handleDeleteBudget = async () => {
         if (window.confirm('Are you sure you want to delete this budget for this month?')) {
-            updateBudgetAllocations({});
+            await updateBudget({ allocations: {}, totalIncome: 0 });
             setAllocations({});
+            setIncome('');
         }
     };
+
+    if (loading) return <p>Loading budget...</p>;
 
     return (
         <div className="p-4">
@@ -134,10 +132,7 @@ export default function BudgetingTab() {
                                 <span>${spent.toFixed(2)} / ${allocated.toFixed(2)}</span>
                             </div>
                             <div className="h-4 bg-gray-200 rounded">
-                                <div
-                                    className="h-4 bg-blue-500 rounded"
-                                    style={{ width: `${progress}%` }}
-                                ></div>
+                                <div className="h-4 bg-blue-500 rounded" style={{ width: `${progress}%` }}></div>
                             </div>
                         </div>
                     ))}
@@ -191,7 +186,7 @@ export default function BudgetingTab() {
                                 <span className="w-24 text-sm">{cat}</span>
                                 <input
                                     type="number"
-                                    value={allocations[cat] ?? budgetAllocations[cat] ?? 0}
+                                    value={allocations[cat] ?? budget?.allocations?.[cat] ?? 0}
                                     onChange={e => handleAllocationChange(cat, e.target.value)}
                                     placeholder="Allocate"
                                     className="w-20 text-right border border-gray-300 rounded p-1 text-sm"
@@ -227,9 +222,7 @@ export default function BudgetingTab() {
                                             onChange={e => setSelectedGoalId(Number(e.target.value))}
                                             className="border border-gray-300 rounded p-1 text-sm w-full"
                                         >
-                                            <option value="" disabled>
-                                                Select a Goal
-                                            </option>
+                                            <option value="" disabled>Select a Goal</option>
                                             {activeGoals.map(g => (
                                                 <option key={g.id} value={g.id}>
                                                     {g.note} — ${Number(g.remaining || 0).toFixed(2)} remaining
@@ -247,7 +240,7 @@ export default function BudgetingTab() {
                                 )}
                             </div>
                         )}
-                    
+
                         <div className="flex justify-end mt-6 space-x-2">
                             <button
                                 onClick={() => setIsBudgeting(false)}

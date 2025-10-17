@@ -4,16 +4,18 @@ import App from './App.jsx';
 import './index.css';
 import { EntriesProvider } from './context/EntriesContext.jsx';
 import { SavingsGoalsProvider } from './context/SavingsGoalsContext.jsx';
+import { BudgetProvider } from './context/BudgetContext.jsx';
 
 function Root() {
   return (
 
-    <SavingsGoalsProvider>
-      <EntriesProvider>
-        <App />
-      </EntriesProvider>
-    </SavingsGoalsProvider>
-
+    <BudgetProvider>
+      <SavingsGoalsProvider>
+        <EntriesProvider>
+          <App />
+        </EntriesProvider>
+      </SavingsGoalsProvider>
+    </BudgetProvider>
   );
 }
 
