@@ -11,8 +11,7 @@ export default function BudgetingTab() {
         currentYear,
         budgetAllocations = {},
         updateBudgetAllocations = () => {},
-        clearBudgetAllocations = () => {},
-        addToAvailableSavings = () => {},
+        setAvailableSavings,
     } = useEntries();
 
     const { activeGoals, fetchGoals } = useSavingsGoals();
@@ -24,35 +23,51 @@ export default function BudgetingTab() {
     const [selectedGoalId, setSelectedGoalId] = useState(null);
     const [savingsTitle, setSavingsTitle] = useState('');
 
-    // Only use categories that already have recorded expenses
-    const expenseEntries = filteredEntries.filter(e => e.type === 'expense');
+    // --- Only call fetchEntries and fetchGoals once on mount ---
+    useEffect(() => {
+        fetchEntries();
+        fetchGoals();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // no dependencies = only on first render
+
+    const expenseEntries = useMemo(
+        () => filteredEntries.filter(e => e.type === 'expense'),
+        [filteredEntries]
+    );
+
     const recordedCategories = useMemo(
         () => [...new Set(expenseEntries.map(e => e.category))],
         [expenseEntries]
     );
 
+    // Prefill allocations when opening the budgeting modal
     useEffect(() => {
-        fetchEntries();
-        fetchGoals();
-    }, [fetchEntries, fetchGoals]);
+        if (isBudgeting) {
+            const prefill = {};
+            recordedCategories.forEach(cat => {
+                prefill[cat] = budgetAllocations[cat] ?? 0;
+            });
+            setAllocations(prefill);
 
-    // Prefill modal when editing existing budget
-    useEffect(() => {
-        if (isBudgeting && Object.keys(budgetAllocations).length > 0) {
-            setAllocations({ ...budgetAllocations });
-            const totalIncome = Object.values(budgetAllocations).reduce(
-                (sum, val) => sum + Number(val || 0),
-                0
-            );
-            setIncome(totalIncome);
+            // Auto-set income to total allocated if blank
+            if (!income) {
+                const totalAllocated = Object.values(prefill).reduce((sum, val) => sum + Number(val), 0);
+                setIncome(totalAllocated);
+            }
         }
-    }, [isBudgeting, budgetAllocations]);
+    }, [isBudgeting, budgetAllocations, recordedCategories]);
 
-    // Calculate progress bars (planned vs allocated)
+    // --- Compute totals ---
     const totalByCategory = recordedCategories.map(cat => {
+        const spent = expenseEntries
+            .filter(e => e.category === cat)
+            .reduce((sum, e) => sum + Number(e.amount), 0);
+
         const allocated = Number(allocations[cat] ?? budgetAllocations[cat] ?? 0);
-        const progress = allocated > 0 ? 100 : 0; // fully planned
-        return { category: cat, allocated, progress };
+        const remainingForCategory = Math.max(allocated - spent, 0);
+        const progress = allocated > 0 ? Math.min((spent / allocated) * 100, 100) : 0;
+
+        return { category: cat, spent, allocated, remainingForCategory, progress };
     });
 
     const hasExistingBudget = Object.keys(budgetAllocations).length > 0;
@@ -81,11 +96,11 @@ export default function BudgetingTab() {
                         year: currentYear,
                     });
                 } else {
-                    await addToAvailableSavings(remaining);
+                    // Add leftover to available savings pool
+                    setAvailableSavings(prev => Number(prev) + Number(remaining));
                 }
             }
 
-            // Reset modal
             setIsBudgeting(false);
             setIncome('');
             setAllocations({});
@@ -99,7 +114,7 @@ export default function BudgetingTab() {
 
     const handleDeleteBudget = () => {
         if (window.confirm('Are you sure you want to delete this budget for this month?')) {
-            clearBudgetAllocations();
+            updateBudgetAllocations({});
             setAllocations({});
         }
     };
@@ -112,11 +127,11 @@ export default function BudgetingTab() {
                 <p className="text-gray-500 italic">No recorded expenses yet.</p>
             ) : (
                 <div className="space-y-4 mb-6">
-                    {totalByCategory.map(({ category, allocated, progress }) => (
+                    {totalByCategory.map(({ category, spent, allocated, progress }) => (
                         <div key={category}>
                             <div className="flex justify-between mb-1">
                                 <span>{category}</span>
-                                <span>${allocated.toFixed(2)} / ${allocated.toFixed(2)}</span>
+                                <span>${spent.toFixed(2)} / ${allocated.toFixed(2)}</span>
                             </div>
                             <div className="h-4 bg-gray-200 rounded">
                                 <div
@@ -176,7 +191,7 @@ export default function BudgetingTab() {
                                 <span className="w-24 text-sm">{cat}</span>
                                 <input
                                     type="number"
-                                    value={allocations[cat] ?? budgetAllocations[cat] ?? ''}
+                                    value={allocations[cat] ?? budgetAllocations[cat] ?? 0}
                                     onChange={e => handleAllocationChange(cat, e.target.value)}
                                     placeholder="Allocate"
                                     className="w-20 text-right border border-gray-300 rounded p-1 text-sm"
@@ -232,7 +247,7 @@ export default function BudgetingTab() {
                                 )}
                             </div>
                         )}
-
+                    
                         <div className="flex justify-end mt-6 space-x-2">
                             <button
                                 onClick={() => setIsBudgeting(false)}

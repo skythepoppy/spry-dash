@@ -14,24 +14,23 @@ export function EntriesProvider({ children }) {
     const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
     const [budgetAllocations, setBudgetAllocations] = useState({});
 
-    // Track leftover funds not allocated to savings goals
     const [availableSavings, setAvailableSavings] = useState(() => {
         return Number(localStorage.getItem('availableSavings') || 0);
     });
 
     const { refreshGoals } = useSavingsGoals();
 
-    // Sync leftover funds to localStorage whenever it changes
+    // Sync leftover funds to localStorage
     useEffect(() => {
         localStorage.setItem('availableSavings', availableSavings);
     }, [availableSavings]);
 
-    // Optional: reset leftover funds when month/year changes
+    // Reset leftover funds when month/year changes
     useEffect(() => {
         setAvailableSavings(0);
     }, [currentMonth, currentYear]);
 
-    // Sync token if it changes elsewhere
+    // Sync token updates
     useEffect(() => {
         const handleStorageChange = () => setToken(localStorage.getItem('token'));
         window.addEventListener('storage', handleStorageChange);
@@ -41,10 +40,6 @@ export function EntriesProvider({ children }) {
     const authHeaders = useCallback(() => ({
         headers: { Authorization: `Bearer ${token}` },
     }), [token]);
-
-    const updateBudgetAllocations = (allocs) => {
-        setBudgetAllocations(allocs);
-    };
 
     const fetchEntries = useCallback(async (month = currentMonth, year = currentYear) => {
         if (!token) return;
@@ -68,9 +63,8 @@ export function EntriesProvider({ children }) {
     const expenseCategories = ['rent', 'food', 'utilities', 'entertainment', 'clothing', 'other'];
     const savingCategories = ['emergency', 'roth ira', 'stocks', '401k', 'savingsgoal'];
 
-    const addEntry = async (entryData) => {
+    const addEntry = useCallback(async (entryData) => {
         const { type, category } = entryData;
-
         if (type === 'expense' && !expenseCategories.includes(category)) {
             throw new Error(`Invalid expense category: ${category}`);
         }
@@ -84,7 +78,7 @@ export function EntriesProvider({ children }) {
             setEntries(prev => [newEntry, ...prev]);
 
             if (newEntry.type === 'saving' && newEntry.category?.toLowerCase() === 'savingsgoal') {
-                refreshGoals();
+                refreshGoals(); // Refresh only once, not causing a loop
             }
 
             return newEntry;
@@ -92,9 +86,9 @@ export function EntriesProvider({ children }) {
             console.error('Failed to add entry:', err.response?.data || err.message);
             throw err;
         }
-    };
+    }, [authHeaders, refreshGoals]);
 
-    const updateEntry = async (id, updates) => {
+    const updateEntry = useCallback(async (id, updates) => {
         try {
             const res = await api.put(`/entries/${id}`, updates, authHeaders());
             const updated = res.data;
@@ -109,9 +103,9 @@ export function EntriesProvider({ children }) {
             console.error('Failed to update entry:', err.response?.data || err.message);
             throw err;
         }
-    };
+    }, [authHeaders, refreshGoals]);
 
-    const deleteEntry = async (id) => {
+    const deleteEntry = useCallback(async (id) => {
         try {
             const entryToDelete = entries.find(e => e.id === id);
             await api.delete(`/entries/${id}`, authHeaders());
@@ -124,24 +118,11 @@ export function EntriesProvider({ children }) {
             console.error('Failed to delete entry:', err.response?.data || err.message);
             throw err;
         }
-    };
+    }, [entries, authHeaders, refreshGoals]);
 
-    // Add available savings helper
-    const addToAvailableSavings = async (amount) => {
-        if (!amount || amount <= 0) return;
-        setAvailableSavings(prev => {
-            const updated = prev + amount;
-            localStorage.setItem('availableSavings', updated);
-            return updated;
-        });
-
-        try {
-            // Optional backend sync if supported
-            await api.post('/savings-pool', { amount }, authHeaders());
-        } catch (err) {
-            console.warn('Unable to sync available savings to backend:', err.message);
-        }
-    };
+    const updateBudgetAllocations = useCallback((allocs) => {
+        setBudgetAllocations(allocs);
+    }, []);
 
     const filteredEntries = useMemo(() => {
         return entries.filter(e => {
@@ -169,7 +150,6 @@ export function EntriesProvider({ children }) {
                 updateBudgetAllocations,
                 availableSavings,
                 setAvailableSavings,
-                addToAvailableSavings,
             }}
         >
             {children}

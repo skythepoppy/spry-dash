@@ -11,7 +11,6 @@ export function SavingsGoalsProvider({ children }) {
     headers: { Authorization: `Bearer ${token}` },
   }), [token]);
 
-  // Fetch goals from backend
   const fetchGoals = useCallback(async () => {
     if (!token) return;
     try {
@@ -22,7 +21,7 @@ export function SavingsGoalsProvider({ children }) {
           allocated_amount: Number(g.allocated_amount || 0),
           goal_amount: Number(g.goal_amount || 0),
           completed: !!g.completed,
-          remaining: Number(g.goal_amount || 0) - Number(g.allocated_amount || 0)
+          remaining: Number(g.goal_amount || 0) - Number(g.allocated_amount || 0),
         }))
       );
     } catch (err) {
@@ -30,18 +29,17 @@ export function SavingsGoalsProvider({ children }) {
     }
   }, [token, authHeaders]);
 
-  const refreshGoals = async () => {
-    await fetchGoals();
-  };
+  const refreshGoals = useCallback(() => {
+    fetchGoals();
+  }, [fetchGoals]);
 
-  // Listen for token changes (e.g., login/logout)
+  // Watch for token updates
   useEffect(() => {
     const handleStorageChange = () => setToken(localStorage.getItem('token'));
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  // Initial fetch
   useEffect(() => {
     fetchGoals();
   }, [fetchGoals]);
@@ -57,7 +55,7 @@ export function SavingsGoalsProvider({ children }) {
         completedGoals,
         fetchGoals,
         refreshGoals,
-        validCategories: ['emergency','roth ira','stocks','401k','savingsgoal'],
+        validCategories: ['emergency', 'roth ira', 'stocks', '401k', 'savingsgoal'],
       }}
     >
       {children}
