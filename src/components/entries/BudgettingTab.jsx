@@ -32,7 +32,7 @@ export default function BudgetingTab() {
         [expenseEntries]
     );
 
-    // Prefill allocations when opening modal
+    // Prefill allocations when opening budgeting modal
     useEffect(() => {
         if (isBudgeting) {
             const prefill = {};
@@ -41,11 +41,12 @@ export default function BudgetingTab() {
                     .filter(e => e.category === cat)
                     .reduce((sum, e) => sum + Number(e.amount), 0);
 
-                // Default allocation: saved budget or at least the spent amount
-                prefill[cat] = budget?.allocations?.[cat] ?? spent ?? 0;
+                // Default allocation: use existing budget allocation or at least what was spent
+                prefill[cat] = budget?.allocations?.[cat] ?? spent;
             });
             setAllocations(prefill);
 
+            // Auto-set income if blank
             if (!income) {
                 const totalAllocated = Object.values(prefill).reduce((sum, val) => sum + Number(val), 0);
                 setIncome(budget?.totalIncome ?? totalAllocated);
@@ -53,18 +54,19 @@ export default function BudgetingTab() {
         }
     }, [isBudgeting, budget, recordedCategories, expenseEntries, income]);
 
-    // Compute totals
+    // Compute totals for progress bar
     const totalByCategory = recordedCategories.map(cat => {
         const spent = expenseEntries
             .filter(e => e.category === cat)
             .reduce((sum, e) => sum + Number(e.amount), 0);
 
-        const allocated = Number(allocations[cat] ?? budget?.allocations?.[cat] ?? spent ?? 0);
+        const allocated = Number(allocations[cat] ?? budget?.allocations?.[cat] ?? spent);
         const remainingForCategory = Math.max(allocated - spent, 0);
         const progress = allocated > 0 ? Math.min((spent / allocated) * 100, 100) : 0;
 
         return { category: cat, spent, allocated, remainingForCategory, progress };
     });
+
 
     const hasExistingBudget = budget?.allocations && Object.keys(budget.allocations).length > 0;
     const totalAllocated = Object.values(allocations).reduce((sum, a) => sum + Number(a || 0), 0);
