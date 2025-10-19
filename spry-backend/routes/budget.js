@@ -3,89 +3,81 @@ const router = express.Router();
 const pool = require('../config/db');
 const auth = require('../middleware/auth');
 
-// GET budget for the user (per category + total)
+// GET budget allocations for the current active session
 router.get('/', auth, async (req, res) => {
   try {
-    // Fetch the latest session for this month/year
+    //  Get the active session for this user
     const [[session]] = await pool.execute(
-      `SELECT * FROM budget_sessions 
-       WHERE user_id = ? 
-       ORDER BY created_at DESC LIMIT 1`,
+      `SELECT * FROM budget_sessions WHERE user_id = ? AND is_active = TRUE LIMIT 1`,
       [req.user.id]
     );
 
     if (!session) {
-      return res.status(404).json({ message: 'No budget session found' });
+      return res.status(404).json({ message: 'No active budget session found' });
     }
 
     const sessionId = session.id;
 
-    // Fetch allocations per category
+    // Get allocations for this session
     const [allocationsRows] = await pool.execute(
-      `SELECT category, amount_allocated FROM budget_allocations WHERE session_id = ?`,
+      `SELECT entry_id, amount_allocated FROM budget_allocations WHERE session_id = ?`,
       [sessionId]
     );
 
-    const allocations = {};
-    allocationsRows.forEach(row => {
-      allocations[row.category] = Number(row.amount_allocated);
-    });
-
     res.json({
-      totalIncome: Number(session.total_income || 0),
-      allocations,
       sessionId,
+      allocations: allocationsRows,
     });
   } catch (err) {
     console.error('Error fetching budget:', err);
+    console.error(err.stack);
     res.status(500).json({ error: 'Failed to fetch budget' });
   }
 });
 
-// PUT update/create budget session with allocations
+// PUT (update/create) allocations for the active session
 router.put('/', auth, async (req, res) => {
   try {
-    const { allocations, totalIncome, month, year } = req.body;
-    if (!allocations || !totalIncome) {
-      return res.status(400).json({ error: 'Missing allocations or totalIncome' });
+    const { allocations } = req.body; // [{ entry_id, amount_allocated }, ...]
+
+    if (!allocations || !Array.isArray(allocations)) {
+      return res.status(400).json({ error: 'Allocations must be an array' });
     }
 
-    // Check if a session exists for this user/month/year
-    const [[existingSession]] = await pool.execute(
-      `SELECT id FROM budget_sessions WHERE user_id = ? AND month = ? AND year = ?`,
-      [req.user.id, month, year]
+    // Get or create the active session
+    let [[session]] = await pool.execute(
+      `SELECT * FROM budget_sessions WHERE user_id = ? AND is_active = TRUE LIMIT 1`,
+      [req.user.id]
     );
 
     let sessionId;
-    if (existingSession) {
-      sessionId = existingSession.id;
-      // Update totalIncome
-      await pool.execute(
-        `UPDATE budget_sessions SET total_income = ? WHERE id = ?`,
-        [totalIncome, sessionId]
-      );
+
+    if (session) {
+      sessionId = session.id;
     } else {
-      // Create a new session
       const [result] = await pool.execute(
-        `INSERT INTO budget_sessions (user_id, month, year, total_income) VALUES (?, ?, ?, ?)`,
-        [req.user.id, month, year, totalIncome]
+        `INSERT INTO budget_sessions (user_id, created_at, is_active) VALUES (?, NOW(), TRUE)`,
+        [req.user.id]
       );
       sessionId = result.insertId;
     }
 
-    // Upsert allocations per category
-    for (const [category, amount] of Object.entries(allocations)) {
+    // Upsert each allocation
+    for (const alloc of allocations) {
+      const { entry_id, amount_allocated } = alloc;
+
       await pool.execute(
-        `INSERT INTO budget_allocations (session_id, category, amount_allocated)
+        `INSERT INTO budget_allocations (session_id, entry_id, amount_allocated)
          VALUES (?, ?, ?)
          ON DUPLICATE KEY UPDATE amount_allocated = ?`,
-        [sessionId, category, amount, amount]
+        [sessionId, entry_id, amount_allocated, amount_allocated]
       );
     }
 
-    res.json({ success: true, message: 'Budget updated successfully', sessionId });
+    res.json({ success: true, message: 'Budget allocations updated', sessionId });
   } catch (err) {
     console.error('Error updating budget:', err);
+    console.error(err.stack);
     res.status(500).json({ error: 'Failed to update budget' });
   }
 });
