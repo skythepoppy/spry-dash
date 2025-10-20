@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import api from '../api/axios';
 import { useSavingsGoals } from './SavingsGoalsContext';
+import { BudgetContext } from './BudgetContext';
 
 const EntriesContext = createContext();
 
@@ -14,9 +15,8 @@ export function EntriesProvider({ children }) {
     const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
     const [budgetAllocations, setBudgetAllocations] = useState({});
 
-    const [availableSavings, setAvailableSavings] = useState(() => {
-        return Number(localStorage.getItem('availableSavings') || 0);
-    });
+    const { unallocatedIncome } = useContext(BudgetContext); // <-- grab from BudgetContext
+    const [availableSavings, setAvailableSavings] = useState(unallocatedIncome || 0);
 
     const { refreshGoals } = useSavingsGoals();
 
@@ -24,6 +24,11 @@ export function EntriesProvider({ children }) {
     useEffect(() => {
         localStorage.setItem('availableSavings', availableSavings);
     }, [availableSavings]);
+
+    // Sync availableSavings with budget unallocatedIncome whenever it changes
+    useEffect(() => {
+        setAvailableSavings(unallocatedIncome);
+    }, [unallocatedIncome]);
 
     // Reset leftover funds when month/year changes
     useEffect(() => {
@@ -78,7 +83,7 @@ export function EntriesProvider({ children }) {
             setEntries(prev => [newEntry, ...prev]);
 
             if (newEntry.type === 'saving' && newEntry.category?.toLowerCase() === 'savingsgoal') {
-                refreshGoals(); // Refresh only once, not causing a loop
+                refreshGoals();
             }
 
             return newEntry;

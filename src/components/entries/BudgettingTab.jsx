@@ -31,28 +31,35 @@ export default function BudgetingTab() {
         [expenseEntries]
     );
 
-    // Prefill allocations + income from DB when opening budgeting modal
+    // prefill allocations + income from DB when opening budgeting modal
     useEffect(() => {
-        if (isBudgeting && budget) {
+        if (budget && isBudgeting) {
+            
             const prefill = {};
+
             recordedCategories.forEach((cat) => {
                 let allocated = 0;
-                if (budget.allocations && Array.isArray(budget.allocations)) {
-                    budget.allocations.forEach((a) => {
+                if (Array.isArray(budget.allocations)) {
+                    for (const a of budget.allocations) {
                         const entry = expenseEntries.find((e) => e.id === a.entry_id);
                         if (entry && entry.category === cat) {
-                            allocated += Number(a.amount_allocated);
+                            allocated += Number(a.amount_allocated) || 0;
                         }
-                    });
+                    }
                 }
                 prefill[cat] = allocated;
             });
 
+            
             setAllocations(prefill);
-            setIncome(budget.monthly_income ?? 0);
-            setUnallocatedIncome(budget.unallocated_income ?? 0);
+            setIncome(Number(budget.monthly_income) || 0);
+            setUnallocatedIncome(Number(budget.unallocated_income) || 0);
+        } else if (!isBudgeting) {
+            
+            setAllocations({});
         }
-    }, [isBudgeting, budget, recordedCategories, expenseEntries]);
+    }, [budget, isBudgeting, recordedCategories, expenseEntries]);
+
 
     const totalByCategory = recordedCategories.map((cat) => {
         const spent = expenseEntries
@@ -127,6 +134,9 @@ export default function BudgetingTab() {
                 allocations: formattedAllocations,
                 monthly_income: Number(income),
             });
+            await fetchEntries();
+            await fetchGoals();
+
 
             if (remaining > 0 && !allocateToSavings && selectedGoalId) {
                 await addEntry({
@@ -160,7 +170,8 @@ export default function BudgetingTab() {
                 setIncome(0);
                 setUnallocatedIncome(0);
                 setIsBudgeting(false);
-                setAvailableSavings(0); // reset leftover savings in EntriesContext
+                setAvailableSavings(0);
+                setAllocateToSavings(false);
             } catch (err) {
                 console.error("Failed to delete budget:", err);
             }

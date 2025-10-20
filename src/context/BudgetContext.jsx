@@ -1,10 +1,11 @@
-import React, { createContext, useState, useEffect } from "react";
+import React, { createContext, useState, useEffect, useContext } from "react";
 
 export const BudgetContext = createContext();
 
 export const BudgetProvider = ({ children }) => {
     const [budget, setBudget] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [unallocatedIncome, setUnallocatedIncome] = useState(0);
 
     // Fetch current active budget session
     const fetchBudget = async () => {
@@ -27,6 +28,9 @@ export const BudgetProvider = ({ children }) => {
                 unallocated_income: data.unallocated_income || 0,
                 allocations: data.allocations || [],
             });
+
+            setUnallocatedIncome(Number(data.unallocated_income || 0));
+
         } catch (error) {
             console.error("Failed to fetch budget:", error);
         } finally {
@@ -72,12 +76,12 @@ export const BudgetProvider = ({ children }) => {
         try {
             const response = await fetch("http://localhost:5000/api/budget", {
                 method: "DELETE",
-                headers: { Authorization: `Bearer ${token}` },
+                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
             });
 
             if (!response.ok) throw new Error("Failed to delete budget");
 
-            setBudget(null); // reset budget state
+            setBudget(null);
         } catch (error) {
             console.error("Error deleting budget:", error);
         }
@@ -88,8 +92,17 @@ export const BudgetProvider = ({ children }) => {
     }, []);
 
     return (
-        <BudgetContext.Provider value={{ budget, updateBudget, deleteBudget, loading }}>
+        <BudgetContext.Provider value={{
+            budget,
+            updateBudget,
+            deleteBudget,
+            loading,
+            unallocatedIncome: Number(unallocatedIncome) || 0,
+            setUnallocatedIncome
+        }}>
             {children}
         </BudgetContext.Provider>
     );
 };
+
+export const useBudget = () => useContext(BudgetContext);

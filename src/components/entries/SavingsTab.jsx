@@ -1,17 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useEntries } from '../../context/EntriesContext';
+import { useBudget } from '../../context/BudgetContext';
 
 export default function SavingsTab() {
-    const { 
-        filteredEntries, 
-        addEntry, 
-        deleteEntry, 
-        fetchEntries, 
-        currentMonth, 
-        currentYear, 
-        availableSavings, 
-        setAvailableSavings 
-    } = useEntries();
+    const { filteredEntries, addEntry, deleteEntry, fetchEntries, currentMonth, currentYear } = useEntries();
+    const { budget, unallocatedIncome, setUnallocatedIncome } = useBudget();
 
     const [form, setForm] = useState({ category: '', amount: '', title: '' });
     const [submitting, setSubmitting] = useState(false);
@@ -20,24 +13,35 @@ export default function SavingsTab() {
 
     const savingCategories = ['emergency', 'roth ira', 'stocks', '401k', 'savingsgoal'];
 
-    // Fetch latest entries when month/year changes
+    // Fetch 
     useEffect(() => {
-        fetchEntries();
-    }, [fetchEntries, currentMonth, currentYear]);
+    fetchEntries().then(() => {
+        // Calculate remaining savings after fetching current entries
+        const allocated = filteredEntries
+            .filter(e => e.type === 'saving')
+            .reduce((sum, e) => sum + Number(e.amount), 0);
 
-    // Filter and sort saving entries (latest first)
+        if (budget?.monthly_income != null) {
+            setUnallocatedIncome(Math.max(budget.monthly_income - allocated, 0));
+        }
+    });
+}, [fetchEntries, filteredEntries, budget]);
+
+    // Sort savings entries
     const savingsSorted = filteredEntries
         .filter(e => e.type === 'saving')
         .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-    // Handle submission of a new savings allocation
     const handleSubmit = async (e) => {
         e.preventDefault();
         const amountNum = Number(form.amount);
 
-        if (!form.category || !amountNum) return;
-        if (amountNum > availableSavings) {
-            setErrorMsg(`You cannot allocate more than $${availableSavings.toFixed(2)} of unallocated savings.`);
+        if (!form.category || !amountNum) {
+            setErrorMsg('Please fill in all fields.');
+            return;
+        }
+        if (amountNum > unallocatedIncome) {
+            setErrorMsg(`You only have $${unallocatedIncome.toFixed(2)} available to allocate.`);
             return;
         }
 
@@ -56,53 +60,56 @@ export default function SavingsTab() {
                 year: currentYear,
             });
 
-            // Update available savings (subtract the amount allocated)
-            setAvailableSavings(prev => Math.max(prev - amountNum, 0));
+            // Subtract from unallocatedIncome
+            setUnallocatedIncome(prev => Math.max(prev - amountNum, 0));
+
             setForm({ category: '', amount: '', title: '' });
-            setSuccessMsg(`Successfully allocated $${amountNum.toFixed(2)} to ${form.category}.`);
+            setSuccessMsg(`Allocated $${amountNum.toFixed(2)} to ${form.category}.`);
         } catch (err) {
+            console.error(err);
             setErrorMsg('Failed to add saving. Please try again.');
         } finally {
             setSubmitting(false);
-            // Clear success message after a few seconds
             setTimeout(() => setSuccessMsg(''), 4000);
         }
     };
 
-    // Handle deletion of a savings entry (adds back the amount)
     const handleDelete = async (id, amount) => {
         if (!window.confirm('Delete this savings entry?')) return;
-        await deleteEntry(id);
-        setAvailableSavings(prev => prev + Number(amount));
+        try {
+            await deleteEntry(id);
+            setUnallocatedIncome(prev => prev + Number(amount));
+        } catch {
+            alert('Failed to delete entry.');
+        }
     };
 
-    // Handle finishing allocation
     const handleFinishAllocation = () => {
-        if (availableSavings > 0) {
-            alert(`You still have $${availableSavings.toFixed(2)} unallocated. Please distribute it into your savings categories before finishing.`);
+        if (unallocatedIncome > 0) {
+            alert(`You still have $${unallocatedIncome.toFixed(2)} unallocated. Please distribute it before finishing.`);
             return;
         }
-        alert('All unallocated savings have been successfully distributed. Great job!');
+        alert('All leftover income has been successfully allocated to savings!');
     };
 
     return (
         <div className="p-4">
-            {/* Display unallocated savings */}
-            {availableSavings > 0 ? (
+            {/* AVAILABLE SAVINGS INFO */}
+            {unallocatedIncome > 0 ? (
                 <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
-                    <span>You currently have <strong>${availableSavings.toFixed(2)}</strong> available from your budget allocation.</span>
+                    You currently have <strong>${unallocatedIncome.toFixed(2)}</strong> available to allocate from your budget.
                 </div>
             ) : (
                 <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded">
-                    <span>All budgeted savings have been allocated for this month!</span>
+                    All budgeted savings have been allocated for this month!
                 </div>
             )}
 
-            {/* Error or success messages */}
+            {/* ERROR / SUCCESS */}
             {errorMsg && <div className="mb-2 text-red-600 font-medium">{errorMsg}</div>}
             {successMsg && <div className="mb-2 text-green-600 font-medium">{successMsg}</div>}
 
-            {/* Form for new saving entry */}
+            {/* ALLOCATION FORM */}
             <form onSubmit={handleSubmit} className="flex flex-wrap gap-2 mb-6">
                 <select
                     value={form.category}
@@ -114,6 +121,7 @@ export default function SavingsTab() {
                         <option key={cat} value={cat}>{cat}</option>
                     ))}
                 </select>
+
                 <input
                     type="text"
                     placeholder="Title / Description"
@@ -121,6 +129,7 @@ export default function SavingsTab() {
                     onChange={e => setForm({ ...form, title: e.target.value })}
                     className="flex-1 border p-2 rounded"
                 />
+
                 <input
                     type="number"
                     placeholder="Amount"
@@ -128,18 +137,19 @@ export default function SavingsTab() {
                     onChange={e => setForm({ ...form, amount: e.target.value })}
                     className="w-32 border p-2 rounded"
                     min="0"
-                    max={availableSavings}
+                    max={unallocatedIncome}
                 />
+
                 <button
                     type="submit"
-                    disabled={submitting || !form.category || !form.amount || availableSavings <= 0}
+                    disabled={submitting || !form.category || !form.amount || unallocatedIncome <= 0}
                     className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:bg-gray-400"
                 >
-                    {submitting ? 'Adding...' : 'Add'}
+                    {submitting ? 'Adding...' : 'Allocate'}
                 </button>
             </form>
 
-            {/* Savings entries list */}
+            {/* SAVINGS ENTRIES */}
             <div className="space-y-3 mb-4">
                 {savingsSorted.length === 0 ? (
                     <div className="text-gray-500 italic">No savings entries yet.</div>
@@ -151,8 +161,8 @@ export default function SavingsTab() {
                         >
                             <span>
                                 {entry.title ? `${entry.title} — ` : ''}
-                                ${Number(entry.amount).toFixed(2)} 
-                                <span className="text-gray-600"> ({entry.note})</span>
+                                ${Number(entry.amount).toFixed(2)}
+                                <span className="text-gray-600"> ({entry.category})</span>
                             </span>
                             <button 
                                 onClick={() => handleDelete(entry.id, entry.amount)} 
@@ -165,15 +175,11 @@ export default function SavingsTab() {
                 )}
             </div>
 
-            {/* Finish allocation button */}
+            {/* FINISH BUTTON */}
             <button
                 onClick={handleFinishAllocation}
-                className={`w-full mt-4 py-2 rounded text-white ${
-                    availableSavings > 0 
-                        ? 'bg-blue-600 hover:bg-blue-700' 
-                        : 'bg-gray-400 cursor-not-allowed'
-                }`}
-                disabled={availableSavings > 0}
+                className={`w-full mt-4 py-2 rounded text-white ${unallocatedIncome > 0 ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400 cursor-not-allowed'}`}
+                disabled={unallocatedIncome > 0}
             >
                 Finish Allocating Savings
             </button>
