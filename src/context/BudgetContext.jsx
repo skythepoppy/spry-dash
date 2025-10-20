@@ -6,7 +6,7 @@ export const BudgetProvider = ({ children }) => {
     const [budget, setBudget] = useState(null);
     const [loading, setLoading] = useState(true);
 
-    // Fetch budget info (totalIncome, allocations, sessionId)
+    // Fetch current active budget session
     const fetchBudget = async () => {
         try {
             setLoading(true);
@@ -19,10 +19,13 @@ export const BudgetProvider = ({ children }) => {
             if (!response.ok) throw new Error("Failed to fetch budget");
 
             const data = await response.json();
+
+            // Update to reflect new backend keys
             setBudget({
-                totalIncome: data.totalIncome,
-                allocations: data.allocations,
                 sessionId: data.sessionId,
+                monthly_income: data.monthly_income || 0,
+                unallocated_income: data.unallocated_income || 0,
+                allocations: data.allocations || [],
             });
         } catch (error) {
             console.error("Failed to fetch budget:", error);
@@ -31,16 +34,17 @@ export const BudgetProvider = ({ children }) => {
         }
     };
 
-    // Update the budget (allocations + totalIncome)
+    // Update allocations and income
     const updateBudget = async (newBudget) => {
         try {
-            // Convert object { category: amount } into array for backend
             const allocationsArray = Array.isArray(newBudget.allocations)
                 ? newBudget.allocations
-                : Object.entries(newBudget.allocations).map(([category, amount_allocated]) => ({
-                    category,
-                    amount_allocated: Number(amount_allocated),
-                }));
+                : Object.entries(newBudget.allocations).map(
+                    ([entry_id, amount_allocated]) => ({
+                        entry_id,
+                        amount_allocated: Number(amount_allocated),
+                    })
+                );
 
             const response = await fetch("http://localhost:5000/api/budget", {
                 method: "PUT",
@@ -50,17 +54,32 @@ export const BudgetProvider = ({ children }) => {
                 },
                 body: JSON.stringify({
                     allocations: allocationsArray,
-                    totalIncome: Number(newBudget.totalIncome),
-                    month: new Date().getMonth() + 1,
-                    year: new Date().getFullYear(),
+                    monthly_income: Number(newBudget.monthly_income),
                 }),
             });
 
             if (!response.ok) throw new Error("Failed to update budget");
 
-            await fetchBudget(); // Refetch after saving
+            // Refetch updated data from backend
+            await fetchBudget();
         } catch (error) {
             console.error("Error updating budget:", error);
+        }
+    };
+
+    // DELETE current budget session
+    const deleteBudget = async () => {
+        try {
+            const response = await fetch("http://localhost:5000/api/budget", {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` },
+            });
+
+            if (!response.ok) throw new Error("Failed to delete budget");
+
+            setBudget(null); // reset budget state
+        } catch (error) {
+            console.error("Error deleting budget:", error);
         }
     };
 
@@ -69,7 +88,7 @@ export const BudgetProvider = ({ children }) => {
     }, []);
 
     return (
-        <BudgetContext.Provider value={{ budget, updateBudget, loading }}>
+        <BudgetContext.Provider value={{ budget, updateBudget, deleteBudget, loading }}>
             {children}
         </BudgetContext.Provider>
     );
